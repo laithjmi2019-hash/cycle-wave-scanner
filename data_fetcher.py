@@ -24,19 +24,23 @@ TOP_25_CRYPTO = [
     "VET-USD", "MKR-USD", "AAVE-USD", "ALGO-USD"
 ]
 
-def fetch_ticker_data_sync(ticker: str):
-    """Fetch 1D and 1H data for a single ticker."""
+def fetch_ticker_data_sync(ticker: str, fetch_15m: bool = False):
+    """Fetch 1D, 1H, and optionally 15m data for a single ticker."""
     try:
         t = yf.Ticker(ticker)
         df_1d = t.history(period="1y", interval="1d")
         df_1h = t.history(period="60d", interval="1h")
         
-        if df_1d.empty or df_1h.empty:
-            return ticker, None, None
+        df_15m = None
+        if fetch_15m:
+            df_15m = t.history(period="60d", interval="15m")
             
-        return ticker, df_1d, df_1h
+        if df_1d.empty or df_1h.empty or (fetch_15m and df_15m.empty):
+            return ticker, None, None, None
+            
+        return ticker, df_1d, df_1h, df_15m
     except Exception as e:
-        return ticker, None, None
+        return ticker, None, None, None
 
 def get_market_data():
     """Wrapper to fetch market breadth (SPY) + top 100 concurrently using ThreadPool."""

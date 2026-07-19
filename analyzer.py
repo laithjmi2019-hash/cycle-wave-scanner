@@ -12,9 +12,14 @@ def calculate_indicators(df: pd.DataFrame) -> pd.DataFrame:
     df['stoch_rsi_k'] = stoch_rsi.stochrsi_k() * 100
     df['stoch_rsi_d'] = stoch_rsi.stochrsi_d() * 100
     
-    # Trend (EMA 50 and 200)
+    # Fast Trend (EMA 9 and 21) + Macro (EMA 50 and 200)
+    df['ema_9'] = ta.trend.EMAIndicator(df['Close'], window=9).ema_indicator()
+    df['ema_21'] = ta.trend.EMAIndicator(df['Close'], window=21).ema_indicator()
     df['ema_50'] = ta.trend.EMAIndicator(df['Close'], window=50).ema_indicator()
     df['ema_200'] = ta.trend.EMAIndicator(df['Close'], window=200).ema_indicator()
+    
+    # ATR for Range Expansion
+    df['atr_10'] = ta.volatility.AverageTrueRange(df['High'], df['Low'], df['Close'], window=10).average_true_range()
     
     # 1. Fair Value Gap (FVG)
     # Bullish FVG formed at t: Low of t > High of t-2
@@ -41,7 +46,7 @@ def calculate_indicators(df: pd.DataFrame) -> pd.DataFrame:
         (df['total_range'] > 0)
     )
     
-    # Institutional Engulfing
+    # Institutional Engulfing (Original with Volume)
     prev_open = df['Open'].shift(1)
     prev_close = df['Close'].shift(1)
     vol_ma20 = df['Volume'].rolling(20).mean()
@@ -52,6 +57,15 @@ def calculate_indicators(df: pd.DataFrame) -> pd.DataFrame:
         (df['Close'] >= prev_open) & 
         (df['Open'] <= prev_close) & 
         (df['Volume'] > vol_ma20)
+    )
+    
+    # Institutional Engulfing (Price Action / Range Expansion for Crypto MTF)
+    df['is_engulfing_pa'] = (
+        (df['Close'] > df['Open']) & 
+        (prev_open > prev_close) & 
+        (df['Close'] >= prev_open) & 
+        (df['Open'] <= prev_close) & 
+        (df['body_size'] > 1.5 * df['atr_10'].shift(1))
     )
     
     return df
@@ -149,4 +163,85 @@ def analyze_asset(ticker: str, data_1d: pd.DataFrame, data_1h: pd.DataFrame, spy
         "fvg_tap": tapping_fvg,
         "pa_trigger": pa_trigger,
         "current_price": round(curr_1h['Close'], 2)
+    }
+
+def analyze_crypto_asset(ticker: str, data_1d: pd.DataFrame, data_1h: pd.DataFrame, data_15m: pd.DataFrame, btc_1d: pd.DataFrame) -> dict:
+    df_1d = calculate_indicators(data_1d).dropna()
+    df_1h = calculate_indicators(data_1h).dropna()
+    df_15m = calculate_indicators(data_15m).dropna()
+    
+    if df_1d.empty or df_1h.empty or df_15m.empty:
+        return {"ticker": ticker, "signal": "Avoid", "score": 0, "reason": "Insufficient Data"}
+        
+    curr_1d = df_1d.iloc[-1]
+    curr_1h = df_1h.iloc[-1]
+    curr_15m = df_15m.iloc[-1]
+    
+    div_1h = detect_divergence(df_1h)
+    
+    # Fast 1D Trend for Crypto (EMA 9 > 21)
+    trend_1d = "UP" if curr_1d['ema_9'] > curr_1d['ema_21'] else "DOWN"
+    
+    btc_df = calculate_indicators(btc_1d).dropna()
+    if not btc_df.empty:
+        btc_curr = btc_df.iloc[-1]
+        btc_trend = "UP" if btc_curr['ema_9'] > btc_curr['ema_21'] else "DOWN"
+    else:
+        btc_trend = "UP"
+        
+    # Liquidity Tap from 1H
+    tapping_fvg_1h = bool(curr_1h['tapping_bull_fvg'])
+    
+    # Trigger from 15m (Sniper Execution)
+    pin_bar_15m = bool(curr_15m['is_pin_bar'])
+    engulfing_15m = bool(curr_15m['is_engulfing_pa'])
+    trigger_15m = pin_bar_15m or engulfing_15m
+    
+    score = 50
+    signal = "Avoid"
+    reason = []
+    
+    # MTF Confluence Matrix
+    is_setup_ready = (div_1h == "Bullish") or tapping_fvg_1h
+    
+    if trend_1d == "UP" and is_setup_ready and trigger_15m:
+        signal = "Good Entry"
+        score = 95
+        trigger_str = []
+        if pin_bar_15m: trigger_str.append("15m Pin Bar")
+        if engulfing_15m: trigger_str.append("15m MTF Engulfing")
+        setup_str = []
+        if div_1h == "Bullish": setup_str.append("1H Bullish Div")
+        if tapping_fvg_1h: setup_str.append("1H FVG Tap")
+        
+        reason.append(f"MTF Confluence: 1D Fast Uptrend + {' & '.join(setup_str)} + Sniper {' + '.join(trigger_str)}.")
+    elif trend_1d == "UP":
+        signal = "Trend Up"
+        score = 70
+        reason.append("1D Fast Uptrend, but awaiting 1H setup or 15m execution trigger.")
+    else:
+        signal = "Trend Down"
+        score = 30
+        reason.append("1D Fast Downtrend. Avoid.")
+        
+    # Bitcoin Macro Filter
+    if btc_trend == "DOWN" and signal in ["Good Entry", "Trend Up"]:
+        score -= 25
+        reason.append("Bitcoin Macro Penalty (BTC 1D is DOWN).")
+        if signal == "Good Entry":
+            signal = "Avoid" # Demote due to bad macro
+            reason.append("Setup invalidated by BTC Downtrend.")
+            
+    score = max(0, min(100, score))
+    
+    return {
+        "ticker": ticker,
+        "signal": signal,
+        "score": score,
+        "reason": " ".join(reason),
+        "trend_1d": trend_1d,
+        "div_1h": div_1h,
+        "fvg_tap": tapping_fvg_1h,
+        "pa_trigger": trigger_15m,
+        "current_price": round(curr_15m['Close'], 4)
     }

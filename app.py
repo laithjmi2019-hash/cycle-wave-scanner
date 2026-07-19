@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 from data_fetcher import get_market_data, get_crypto_data, fetch_ticker_data_sync
-from analyzer import analyze_asset, calculate_indicators
+from analyzer import analyze_asset, analyze_crypto_asset, calculate_indicators
 
 st.set_page_config(page_title="Cycle & Wave Scanner", layout="wide")
 
@@ -38,9 +38,8 @@ def load_and_scan_crypto():
     for ticker, data in market_data.items():
         if ticker == "BTC-USD":
             continue
-        # BTC-USD is used as the 'spy_data' breadth filter! 
-        # If Bitcoin is in a downtrend, altcoins are penalized.
-        res = analyze_asset(ticker, data["1d"], data["1h"], btc_data)
+        # MTF Logic: Pass 1d, 1h, and 15m. BTC acts as macro.
+        res = analyze_crypto_asset(ticker, data["1d"], data["1h"], data["15m"], btc_data)
         results.append(res)
         
     df_res = pd.DataFrame(results)
@@ -108,20 +107,28 @@ def main():
 
     with tab2:
         st.header("Search Individual Ticker")
-        search_ticker = st.text_input("Enter Ticker (e.g. NVDA, TSLA):", "NVDA").upper()
+        search_ticker = st.text_input("Enter Ticker (e.g. NVDA, TSLA, BTC-USD):", "NVDA").upper()
         if st.button("Analyze"):
             with st.spinner("Fetching and analyzing..."):
-                t, d1d, d1h = fetch_ticker_data_sync(search_ticker)
+                is_crypto = search_ticker.endswith("-USD")
+                t, d1d, d1h, d15m = fetch_ticker_data_sync(search_ticker, fetch_15m=is_crypto)
                 
                 if 'market_data' in locals() and "SPY" in market_data:
                     spy_1d = market_data["SPY"]["1d"]
                 else:
-                    _, spy_1d, _ = fetch_ticker_data_sync("SPY")
+                    _, spy_1d, _, _ = fetch_ticker_data_sync("SPY")
+                    
+                if is_crypto:
+                    _, btc_1d, _, _ = fetch_ticker_data_sync("BTC-USD")
                 
                 if d1d is not None and d1h is not None and spy_1d is not None:
-                    res = analyze_asset(search_ticker, d1d, d1h, spy_1d)
-                    
-                    st.subheader(f"Institutional Analysis for {search_ticker}")
+                    if is_crypto and d15m is not None and btc_1d is not None:
+                        res = analyze_crypto_asset(search_ticker, d1d, d1h, d15m, btc_1d)
+                        st.subheader(f"MTF Institutional Crypto Analysis for {search_ticker}")
+                    else:
+                        res = analyze_asset(search_ticker, d1d, d1h, spy_1d)
+                        st.subheader(f"Institutional Equity Analysis for {search_ticker}")
+                        
                     col1, col2, col3, col4 = st.columns(4)
                     col1.metric("Signal", res["signal"])
                     col2.metric("Conviction Score", f"{res['score']}%")
@@ -133,7 +140,7 @@ def main():
                     df_1h_ind = calculate_indicators(d1h)
                     st.plotly_chart(plot_chart(df_1h_ind, search_ticker, "1H"), use_container_width=True)
                 else:
-                    st.error("Failed to fetch data for ticker.")
+                    st.error("Failed to fetch data for ticker. Ensure it's a valid Yahoo Finance ticker (e.g., TSLA, BTC-USD).")
 
 if __name__ == "__main__":
     main()
