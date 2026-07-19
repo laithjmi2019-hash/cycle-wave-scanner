@@ -4,8 +4,13 @@ import ta
 # ─────────────────────────────────────────────────────────────────
 # CORE INDICATORS (shared by all analyzers)
 # ─────────────────────────────────────────────────────────────────
-def calculate_indicators(df: pd.DataFrame) -> pd.DataFrame:
-    """Calculate all indicators without lookahead bias."""
+def calculate_indicators(df: pd.DataFrame, full: bool = True) -> pd.DataFrame:
+    """
+    Calculate all indicators without lookahead bias.
+    full=True  → includes EMA-50/200 (used for 1D and 1H frames).
+    full=False → skips EMA-50/200 (used for 15m frames where 200-candle
+                 history is unavailable, preventing dropna from wiping data).
+    """
     df = df.copy()
 
     # RSI (primary momentum oscillator)
@@ -21,11 +26,14 @@ def calculate_indicators(df: pd.DataFrame) -> pd.DataFrame:
     df['macd_diff']      = macd.macd_diff()
     df['macd_diff_prev'] = df['macd_diff'].shift(1)
 
-    # EMAs: Fast (9/21) + Macro (50/200)
-    df['ema_9']   = ta.trend.EMAIndicator(df['Close'], window=9).ema_indicator()
-    df['ema_21']  = ta.trend.EMAIndicator(df['Close'], window=21).ema_indicator()
-    df['ema_50']  = ta.trend.EMAIndicator(df['Close'], window=50).ema_indicator()
-    df['ema_200'] = ta.trend.EMAIndicator(df['Close'], window=200).ema_indicator()
+    # EMAs: Fast (9/21) always computed
+    df['ema_9']  = ta.trend.EMAIndicator(df['Close'], window=9).ema_indicator()
+    df['ema_21'] = ta.trend.EMAIndicator(df['Close'], window=21).ema_indicator()
+
+    # EMA-50/200 only on full mode (1D/1H) — skipped on 15m to avoid dropna wipe
+    if full:
+        df['ema_50']  = ta.trend.EMAIndicator(df['Close'], window=50).ema_indicator()
+        df['ema_200'] = ta.trend.EMAIndicator(df['Close'], window=200).ema_indicator()
 
     # ATR — volatility / stop / target sizing
     df['atr_10'] = ta.volatility.AverageTrueRange(
@@ -205,9 +213,9 @@ def analyze_asset(ticker: str, data_1d: pd.DataFrame, data_1h: pd.DataFrame,
              "rsi_1d": "N/A", "stoch_1h": "N/A", "macd_conf": "N/A",
              "fvg_tap": False, "pa_trigger": False, "current_price": 0}
 
-    df_1d  = calculate_indicators(data_1d).dropna()
-    df_1h  = calculate_indicators(data_1h).dropna()
-    df_15m = calculate_indicators(data_15m).dropna()
+    df_1d  = calculate_indicators(data_1d,  full=True).dropna()
+    df_1h  = calculate_indicators(data_1h,  full=True).dropna()
+    df_15m = calculate_indicators(data_15m, full=False).dropna()  # skips EMA-50/200
 
     if df_1d.empty or df_1h.empty or df_15m.empty:
         return EMPTY
@@ -365,9 +373,9 @@ def analyze_crypto_asset(ticker: str, data_1d: pd.DataFrame, data_1h: pd.DataFra
              "rsi_1d": "N/A", "stoch_1h": "N/A", "macd_conf": "N/A",
              "fvg_tap": False, "pa_trigger": False, "current_price": 0}
 
-    df_1d  = calculate_indicators(data_1d).dropna()
-    df_1h  = calculate_indicators(data_1h).dropna()
-    df_15m = calculate_indicators(data_15m).dropna()
+    df_1d  = calculate_indicators(data_1d,  full=True).dropna()
+    df_1h  = calculate_indicators(data_1h,  full=True).dropna()
+    df_15m = calculate_indicators(data_15m, full=False).dropna()  # skips EMA-50/200
 
     if df_1d.empty or df_1h.empty or df_15m.empty:
         return EMPTY
