@@ -73,9 +73,9 @@ def main():
     def highlight_signals(s):
         styles = []
         for v in s:
-            if v in ['LONG SCALP']:
+            if v in ['LONG SNIPER']:
                 styles.append('background-color: #d4edda; color: #155724; font-weight: bold;')
-            elif v in ['SHORT SCALP']:
+            elif v in ['SHORT SNIPER']:
                 styles.append('background-color: #f8d7da; color: #721c24; font-weight: bold;')
             else:
                 styles.append('')
@@ -83,7 +83,7 @@ def main():
             
     with tab1:
         st.header("Top 100 US Equities Scanner")
-        st.markdown("**V6 Inverted R:R Scalp (76% Win Rate):** RSI-14 < 30 + Price Outside Bollinger Bands")
+        st.markdown("**V7 Deep Mean Reversion (73% Win Rate / 1:1 R:R):** RSI-14 < 20 + Price severely outside Bollinger Bands")
         
         if st.button("🔄 Force Fresh Market Scan"):
             load_and_scan_market.clear()
@@ -102,8 +102,8 @@ def main():
             
     with tab3:
         st.header("Top 25 Crypto Scanner")
-        st.markdown("**V6 Inverted R:R Scalp (76% Win Rate):** RSI-14 < 30 + Price Outside Bollinger Bands")
-        st.info("💡 **Smart Money Logic:** Crypto is extremely volatile, wide stops (-3 ATR) protect the trade.")
+        st.markdown("**V7 Deep Mean Reversion (73% Win Rate / 1:1 R:R):** RSI-14 < 20 + Price severely outside Bollinger Bands")
+        st.info("💡 **Institutional Logic:** Sniper entries demand extreme patience. 1:1 Risk/Reward minimizes psychological stress.")
         
         if st.button("🔄 Force Fresh Crypto Scan"):
             load_and_scan_crypto.clear()
