@@ -50,6 +50,10 @@ def main():
     with tab1:
         st.header("Top 100 US Equities Scanner")
         st.markdown("**Strict Confluence Requirements:** 1D Trend UP + Bullish Divergence + Liquidity Tap (FVG/Pin Bar/Engulfing)")
+        
+        if st.button("🔄 Force Fresh Market Scan"):
+            load_and_scan_market.clear()
+            
         with st.spinner("Fetching data asynchronously (Zero Lookahead)..."):
             scan_df, market_data = load_and_scan_market()
             
