@@ -48,8 +48,8 @@ def get_market_data():
     
     data_dict = {}
     with ThreadPoolExecutor(max_workers=20) as executor:
-        results = executor.map(fetch_ticker_data_sync, tickers_to_fetch)
-        for ticker, df_1d, df_1h in results:
+        results = executor.map(lambda t: fetch_ticker_data_sync(t, fetch_15m=False), tickers_to_fetch)
+        for ticker, df_1d, df_1h, _ in results:
             if df_1d is not None and df_1h is not None:
                 data_dict[ticker] = {"1d": df_1d, "1h": df_1h}
                 
@@ -61,9 +61,9 @@ def get_crypto_data():
     
     data_dict = {}
     with ThreadPoolExecutor(max_workers=20) as executor:
-        results = executor.map(fetch_ticker_data_sync, tickers_to_fetch)
-        for ticker, df_1d, df_1h in results:
-            if df_1d is not None and df_1h is not None:
-                data_dict[ticker] = {"1d": df_1d, "1h": df_1h}
+        results = executor.map(lambda t: fetch_ticker_data_sync(t, fetch_15m=True), tickers_to_fetch)
+        for ticker, df_1d, df_1h, df_15m in results:
+            if df_1d is not None and df_1h is not None and df_15m is not None:
+                data_dict[ticker] = {"1d": df_1d, "1h": df_1h, "15m": df_15m}
                 
     return data_dict
