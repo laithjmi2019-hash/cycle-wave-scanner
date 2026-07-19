@@ -153,8 +153,28 @@ def analyze_asset(ticker: str, data_1d: pd.DataFrame, data_1h: pd.DataFrame, spy
             
     score = max(0, min(100, score))
     
+    if signal == "Good Entry":
+        rec = "STRONG BUY"
+    elif signal == "Trend Up":
+        rec = "WAIT FOR DIP"
+    else:
+        rec = "AVOID"
+        
+    if rec in ["STRONG BUY", "WAIT FOR DIP"]:
+        recent_high = df_1h['High'].rolling(20).max().iloc[-1]
+        atr_proj = curr_1h['Close'] + (2.5 * curr_1h['atr_10'])
+        target_price = max(recent_high, atr_proj)
+        if target_price <= curr_1h['Close']:
+            target_price = atr_proj
+        upside_pct = ((target_price - curr_1h['Close']) / curr_1h['Close']) * 100
+        upside_str = f"+{round(upside_pct, 2)}%"
+    else:
+        upside_str = "N/A"
+    
     return {
         "ticker": ticker,
+        "recommendation": rec,
+        "upside": upside_str,
         "signal": signal,
         "score": score,
         "reason": " ".join(reason),
@@ -234,8 +254,28 @@ def analyze_crypto_asset(ticker: str, data_1d: pd.DataFrame, data_1h: pd.DataFra
             
     score = max(0, min(100, score))
     
+    if signal == "Good Entry":
+        rec = "STRONG BUY"
+    elif signal == "Trend Up":
+        rec = "WAIT FOR DIP"
+    else:
+        rec = "AVOID"
+        
+    if rec in ["STRONG BUY", "WAIT FOR DIP"]:
+        recent_high = df_1h['High'].rolling(20).max().iloc[-1]
+        atr_proj = curr_15m['Close'] + (2.5 * curr_1h['atr_10'])
+        target_price = max(recent_high, atr_proj)
+        if target_price <= curr_15m['Close']:
+            target_price = atr_proj
+        upside_pct = ((target_price - curr_15m['Close']) / curr_15m['Close']) * 100
+        upside_str = f"+{round(upside_pct, 2)}%"
+    else:
+        upside_str = "N/A"
+    
     return {
         "ticker": ticker,
+        "recommendation": rec,
+        "upside": upside_str,
         "signal": signal,
         "score": score,
         "reason": " ".join(reason),

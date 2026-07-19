@@ -69,9 +69,9 @@ def main():
     
     tab1, tab2, tab3 = st.tabs(["Top 100 Scanner", "Search & Analyze", "Top 25 Crypto Scanner"])
     
-    # Highlight 'Good Entry' specifically
+    # Highlight 'Good Entry' and 'STRONG BUY'
     def highlight_good_entry(s):
-        return ['background-color: #d4edda; color: #155724; font-weight: bold;' if v == 'Good Entry' else '' for v in s]
+        return ['background-color: #d4edda; color: #155724; font-weight: bold;' if v in ['Good Entry', 'STRONG BUY'] else '' for v in s]
             
     with tab1:
         st.header("Top 100 US Equities Scanner")
@@ -84,7 +84,7 @@ def main():
             scan_df, market_data = load_and_scan_market()
             
         if not scan_df.empty:
-            styled_df = scan_df.style.apply(highlight_good_entry, subset=['signal'])
+            styled_df = scan_df.style.apply(highlight_good_entry, subset=['signal', 'recommendation'])
             st.dataframe(styled_df, use_container_width=True)
         else:
             st.warning("No data returned.")
@@ -101,7 +101,7 @@ def main():
             crypto_df, crypto_data = load_and_scan_crypto()
             
         if not crypto_df.empty:
-            styled_crypto_df = crypto_df.style.apply(highlight_good_entry, subset=['signal'])
+            styled_crypto_df = crypto_df.style.apply(highlight_good_entry, subset=['signal', 'recommendation'])
             st.dataframe(styled_crypto_df, use_container_width=True)
         else:
             st.warning("No data returned.")
@@ -165,11 +165,17 @@ def main():
         if "tab2_result" in st.session_state and search_ticker == st.session_state.last_ticker and search_ticker:
             header, res, df_1h_ind = st.session_state.tab2_result
             st.subheader(header)
-            col1, col2, col3, col4 = st.columns(4)
-            col1.metric("Signal", res["signal"])
-            col2.metric("Conviction Score", f"{res['score']}%")
-            col3.metric("1D Trend", res["trend_1d"])
-            col4.metric("1H Divergence", res["div_1h"])
+            
+            col1, col2, col3 = st.columns(3)
+            col1.metric("Recommendation", res["recommendation"])
+            col2.metric("Signal", res["signal"])
+            col3.metric("Predicted Upside", res["upside"])
+            
+            st.markdown("---")
+            col4, col5, col6 = st.columns(3)
+            col4.metric("Conviction Score", f"{res['score']}%")
+            col5.metric("1D Trend", res["trend_1d"])
+            col6.metric("1H Divergence", res["div_1h"])
             
             st.info(f"**Reason:** {res['reason']}")
             st.plotly_chart(plot_chart(df_1h_ind, search_ticker, "1H"), use_container_width=True)
