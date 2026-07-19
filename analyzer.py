@@ -1,5 +1,4 @@
 import pandas as pd
-import numpy as np
 import ta
 
 # ─────────────────────────────────────────────────────────────────
@@ -9,16 +8,18 @@ def calculate_indicators(df: pd.DataFrame) -> pd.DataFrame:
     """Calculate all indicators without lookahead bias."""
     df = df.copy()
 
-    # RSI & StochRSI
+    # RSI (primary momentum oscillator)
     df['rsi'] = ta.momentum.RSIIndicator(df['Close'], window=14).rsi()
+
+    # StochRSI — now wired into exhaustion detection
     stoch_rsi = ta.momentum.StochRSIIndicator(df['Close'], window=14, smooth1=3, smooth2=3)
     df['stoch_rsi_k'] = stoch_rsi.stochrsi_k() * 100
     df['stoch_rsi_d'] = stoch_rsi.stochrsi_d() * 100
 
-    # FIX 6: MACD is now computed AND wired in as a confirmation signal
+    # MACD histogram — confirmation signal
     macd = ta.trend.MACD(df['Close'])
-    df['macd_diff']       = macd.macd_diff()       # histogram (momentum)
-    df['macd_diff_prev']  = df['macd_diff'].shift(1)
+    df['macd_diff']      = macd.macd_diff()
+    df['macd_diff_prev'] = df['macd_diff'].shift(1)
 
     # EMAs: Fast (9/21) + Macro (50/200)
     df['ema_9']   = ta.trend.EMAIndicator(df['Close'], window=9).ema_indicator()
@@ -26,12 +27,14 @@ def calculate_indicators(df: pd.DataFrame) -> pd.DataFrame:
     df['ema_50']  = ta.trend.EMAIndicator(df['Close'], window=50).ema_indicator()
     df['ema_200'] = ta.trend.EMAIndicator(df['Close'], window=200).ema_indicator()
 
-    # ATR (volatility) — FIX 9: removed unused atr_14
+    # ATR — volatility / stop / target sizing
     df['atr_10'] = ta.volatility.AverageTrueRange(
         df['High'], df['Low'], df['Close'], window=10).average_true_range()
 
-    # ── BULLISH FVG ────────────────────────────────────────────────
-    # FIX 4: limit raised from 5 → 20 candles (~20h on 1H chart)
+    # Volume MA — institutional engulfing confirmation
+    df['vol_ma20'] = df['Volume'].rolling(20).mean()
+
+    # ── BULLISH FVG (3-candle imbalance: Low[t] > High[t-2]) ──────
     df['fvg_bull_gap_low']  = df['High'].shift(2)
     df['fvg_bull_gap_high'] = df['Low']
     df['is_bull_fvg']       = df['fvg_bull_gap_high'] > df['fvg_bull_gap_low']
@@ -42,8 +45,7 @@ def calculate_indicators(df: pd.DataFrame) -> pd.DataFrame:
         (df['Close'] >= df['active_bull_fvg_bottom'])
     )
 
-    # ── BEARISH FVG ────────────────────────────────────────────────
-    # FIX 4: limit raised from 5 → 20 candles
+    # ── BEARISH FVG (3-candle imbalance: High[t] < Low[t-2]) ──────
     df['fvg_bear_gap_high'] = df['Low'].shift(2)
     df['fvg_bear_gap_low']  = df['High']
     df['is_bear_fvg']       = df['fvg_bear_gap_low'] < df['fvg_bear_gap_high']
@@ -60,7 +62,7 @@ def calculate_indicators(df: pd.DataFrame) -> pd.DataFrame:
     df['lower_wick']  = df[['Close', 'Open']].min(axis=1) - df['Low']
     df['upper_wick']  = df['High'] - df[['Close', 'Open']].max(axis=1)
 
-    # Bullish Pin Bar
+    # Bullish Pin Bar (hammer)
     df['is_pin_bar'] = (
         (df['lower_wick'] >= 2 * df['body_size']) &
         (df[['Close', 'Open']].max(axis=1) >= df['High'] - 0.33 * df['total_range']) &
@@ -76,27 +78,26 @@ def calculate_indicators(df: pd.DataFrame) -> pd.DataFrame:
 
     prev_open  = df['Open'].shift(1)
     prev_close = df['Close'].shift(1)
-    vol_ma20   = df['Volume'].rolling(20).mean()
 
-    # Bullish Engulfing (Volume-confirmed for equities)
+    # Bullish Engulfing — volume-confirmed (equities)
     df['is_engulfing'] = (
         (df['Close'] > df['Open']) &
         (prev_open > prev_close) &
         (df['Close'] >= prev_open) &
         (df['Open']  <= prev_close) &
-        (df['Volume'] > vol_ma20)
+        (df['Volume'] > df['vol_ma20'])
     )
 
-    # Bearish Engulfing (Volume-confirmed for equities)
+    # Bearish Engulfing — volume-confirmed (equities)
     df['is_bear_engulfing'] = (
         (df['Close'] < df['Open']) &
         (prev_open < prev_close) &
         (df['Close'] <= prev_open) &
         (df['Open']  >= prev_close) &
-        (df['Volume'] > vol_ma20)
+        (df['Volume'] > df['vol_ma20'])
     )
 
-    # Bullish Engulfing (Range expansion for crypto)
+    # Bullish Engulfing — ATR range expansion (crypto, no volume reliance)
     df['is_engulfing_pa'] = (
         (df['Close'] > df['Open']) &
         (prev_open > prev_close) &
@@ -105,7 +106,7 @@ def calculate_indicators(df: pd.DataFrame) -> pd.DataFrame:
         (df['body_size'] > 1.5 * df['atr_10'].shift(1))
     )
 
-    # Bearish Engulfing (Range expansion for crypto)
+    # Bearish Engulfing — ATR range expansion (crypto)
     df['is_bear_engulfing_pa'] = (
         (df['Close'] < df['Open']) &
         (prev_open < prev_close) &
@@ -118,8 +119,7 @@ def calculate_indicators(df: pd.DataFrame) -> pd.DataFrame:
 
 
 # ─────────────────────────────────────────────────────────────────
-# DIVERGENCE DETECTION  (Bullish + Bearish, no lookahead)
-# FIX 5: lookback raised from 20 → 45 candles for deeper divergences
+# DIVERGENCE DETECTION (no lookahead, lookback=45 candles)
 # ─────────────────────────────────────────────────────────────────
 def detect_divergence(df: pd.DataFrame, lookback: int = 45) -> str:
     if len(df) < lookback + 1:
@@ -129,12 +129,12 @@ def detect_divergence(df: pd.DataFrame, lookback: int = 45) -> str:
     rsi_min_idx = recent['rsi'].idxmin()
     rsi_max_idx = recent['rsi'].idxmax()
 
-    # Bullish: price makes Lower Low, RSI makes Higher Low
+    # Bullish: price Lower Low, RSI Higher Low
     if df['Low'].iloc[-1] <= recent['Low'].min() * 1.01:
         if rsi_min_idx != current_idx and df['rsi'].iloc[-1] > df.loc[rsi_min_idx, 'rsi']:
             return "Bullish"
 
-    # Bearish: price makes Higher High, RSI makes Lower High
+    # Bearish: price Higher High, RSI Lower High
     if df['High'].iloc[-1] >= recent['High'].max() * 0.99:
         if rsi_max_idx != current_idx and df['rsi'].iloc[-1] < df.loc[rsi_max_idx, 'rsi']:
             return "Bearish"
@@ -143,34 +143,31 @@ def detect_divergence(df: pd.DataFrame, lookback: int = 45) -> str:
 
 
 # ─────────────────────────────────────────────────────────────────
-# FIX 6: MACD CONFLUENCE CHECKER
-# Returns True if MACD histogram is rising (bullish momentum) or
-# falling (bearish momentum), confirming the direction of a signal.
+# MACD CONFLUENCE HELPERS
 # ─────────────────────────────────────────────────────────────────
 def _macd_confirms_long(row) -> bool:
-    """MACD histogram is positive and rising — confirms bullish momentum."""
     return (pd.notna(row['macd_diff']) and pd.notna(row['macd_diff_prev']) and
             row['macd_diff'] > 0 and row['macd_diff'] > row['macd_diff_prev'])
 
 def _macd_confirms_short(row) -> bool:
-    """MACD histogram is negative and falling — confirms bearish momentum."""
     return (pd.notna(row['macd_diff']) and pd.notna(row['macd_diff_prev']) and
             row['macd_diff'] < 0 and row['macd_diff'] < row['macd_diff_prev'])
 
+# StochRSI — secondary exhaustion checks (wired in, not dead code)
+def _stoch_overbought(row) -> bool:
+    return pd.notna(row['stoch_rsi_k']) and row['stoch_rsi_k'] > 80
+
+def _stoch_oversold(row) -> bool:
+    return pd.notna(row['stoch_rsi_k']) and row['stoch_rsi_k'] < 20
+
 
 # ─────────────────────────────────────────────────────────────────
-# FIX 1 & 2: RISK-TO-REWARD CALCULATOR (signed-aware, safe scope)
+# RISK-TO-REWARD CALCULATOR (signed-aware)
 # ─────────────────────────────────────────────────────────────────
 def _calc_rr(entry: float, stop: float, target: float, is_short: bool = False):
-    """
-    Returns (rr_ratio, upside_str, downside_str, rr_str, rr_ok).
-    FIX 1: now correctly handles short trade direction.
-    rr_ok is True when R:R >= 1.5
-    """
     if is_short:
-        # For shorts: reward = entry - target, risk = stop - entry
-        reward = entry  - target
-        risk   = stop   - entry
+        reward = entry - target
+        risk   = stop  - entry
     else:
         reward = target - entry
         risk   = entry  - stop
@@ -178,37 +175,34 @@ def _calc_rr(entry: float, stop: float, target: float, is_short: bool = False):
     if risk <= 0 or reward <= 0:
         return 0, "N/A", "N/A", "N/A", False
 
-    rr           = reward / risk
-    move_pct     = (reward / entry) * 100
-    risk_pct     = (risk   / entry) * 100
+    rr        = reward / risk
+    move_pct  = (reward / entry) * 100
+    risk_pct  = (risk   / entry) * 100
+    direction = "-" if is_short else "+"
 
-    direction    = "-" if is_short else "+"
-    upside_str   = f"{direction}{round(move_pct, 2)}%"
-    downside_str = f"-{round(risk_pct, 2)}%"
-    rr_str       = f"1:{round(rr, 1)}"
-
-    return round(rr, 2), upside_str, downside_str, rr_str, rr >= 1.5
+    return (
+        round(rr, 2),
+        f"{direction}{round(move_pct, 2)}%",
+        f"-{round(risk_pct, 2)}%",
+        f"1:{round(rr, 1)}",
+        rr >= 1.5
+    )
 
 
 # ─────────────────────────────────────────────────────────────────
-# EQUITY ANALYZER
+# EQUITY ANALYZER — Full 3-TF MTF Sniper
 # ─────────────────────────────────────────────────────────────────
 def analyze_asset(ticker: str, data_1d: pd.DataFrame, data_1h: pd.DataFrame,
                   data_15m: pd.DataFrame, spy_1d: pd.DataFrame) -> dict:
-    """
-    Full 3-TF Sniper engine for US Equities.
-    Fixes applied: 1 (short R:R), 2 (scope), 3 (prepost), 4 (FVG limit),
-                   5 (divergence lookback), 6 (MACD confirmation)
-    """
-    # FIX 2: initialise all output variables at top of function scope
-    upside_str   = "N/A"
-    rr_str       = "N/A"
-    stop         = None
+    # Safe defaults — no scope bugs
+    upside_str = "N/A"
+    rr_str     = "N/A"
+    stop       = None
 
     EMPTY = {"ticker": ticker, "recommendation": "AVOID", "upside": "N/A",
-             "stop_loss": "N/A", "rr": "N/A", "signal": "Avoid",
-             "score": 0, "reason": "Insufficient Data",
-             "trend_1d": "N/A", "div_1h": "N/A",
+             "stop_loss": "N/A", "rr": "N/A", "signal": "Avoid", "score": 0,
+             "reason": "Insufficient Data", "trend_1d": "N/A", "div_1h": "N/A",
+             "rsi_1d": "N/A", "stoch_1h": "N/A", "macd_conf": "N/A",
              "fvg_tap": False, "pa_trigger": False, "current_price": 0}
 
     df_1d  = calculate_indicators(data_1d).dropna()
@@ -222,27 +216,29 @@ def analyze_asset(ticker: str, data_1d: pd.DataFrame, data_1h: pd.DataFrame,
     curr_1h  = df_1h.iloc[-1]
     curr_15m = df_15m.iloc[-1]
 
+    # ── TREND & MOMENTUM ──────────────────────────────────────────
     trend_1d      = "UP" if curr_1d['ema_9'] > curr_1d['ema_21'] else "DOWN"
     daily_rsi     = curr_1d['rsi']
-    is_overbought = daily_rsi > 75
-    is_oversold   = daily_rsi < 30
+    # StochRSI on 1H for secondary exhaustion — now properly wired
+    stoch_ob_1h   = _stoch_overbought(curr_1h)
+    stoch_os_1h   = _stoch_oversold(curr_1h)
+    # Combined exhaustion: Daily RSI OR 1H StochRSI both overbought
+    is_overbought = (daily_rsi > 75) or (daily_rsi > 68 and stoch_ob_1h)
+    is_oversold   = (daily_rsi < 30) or (daily_rsi < 35 and stoch_os_1h)
 
     spy_df    = calculate_indicators(spy_1d).dropna()
     spy_trend = "UP" if (not spy_df.empty and spy_df.iloc[-1]['ema_9'] > spy_df.iloc[-1]['ema_21']) else "DOWN"
 
-    div_1h = detect_divergence(df_1h)
-
-    # FIX 6: MACD confirmation on 1H
+    div_1h    = detect_divergence(df_1h)
     macd_bull = _macd_confirms_long(curr_1h)
     macd_bear = _macd_confirms_short(curr_1h)
 
-    # Bullish triggers
+    # ── LIQUIDITY TRIGGERS ────────────────────────────────────────
     tap_bull_fvg_1h  = bool(curr_1h['tapping_bull_fvg'])
     pin_bar_15m      = bool(curr_15m['is_pin_bar'])
     engulf_bull_15m  = bool(curr_15m['is_engulfing'])
     bull_trigger_15m = pin_bar_15m or engulf_bull_15m
 
-    # Bearish triggers
     tap_bear_fvg_1h  = bool(curr_1h['tapping_bear_fvg'])
     bear_pin_15m     = bool(curr_15m['is_bear_pin_bar'])
     engulf_bear_15m  = bool(curr_15m['is_bear_engulfing'])
@@ -254,28 +250,20 @@ def analyze_asset(ticker: str, data_1d: pd.DataFrame, data_1h: pd.DataFrame,
     rec        = "AVOID"
     pa_trigger = bull_trigger_15m
     fvg_tap    = tap_bull_fvg_1h
-
-    entry  = curr_15m['Close']
-    atr_1h = curr_1h['atr_10']
+    entry      = curr_15m['Close']
+    atr_1h     = curr_1h['atr_10']
 
     is_short_setup = (
-        trend_1d == "DOWN" and
-        div_1h == "Bearish" and
-        (tap_bear_fvg_1h or bear_trigger_15m) and
-        not is_oversold
+        trend_1d == "DOWN" and div_1h == "Bearish" and
+        (tap_bear_fvg_1h or bear_trigger_15m) and not is_oversold
     )
-
     is_bull_setup = (
-        trend_1d == "UP" and
-        div_1h == "Bullish" and
-        (tap_bull_fvg_1h or bull_trigger_15m) and
-        not is_overbought
+        trend_1d == "UP" and div_1h == "Bullish" and
+        (tap_bull_fvg_1h or bull_trigger_15m) and not is_overbought
     )
 
     if is_bull_setup:
-        signal = "Good Entry"
-        score  = 95
-        # FIX 6: MACD confirmation adds +3 conviction
+        signal = "Good Entry"; score = 95; rec = "STRONG BUY"
         if macd_bull:
             score += 3
             reason.append("MACD Hist rising — momentum confirmed.")
@@ -284,12 +272,10 @@ def analyze_asset(ticker: str, data_1d: pd.DataFrame, data_1h: pd.DataFrame,
         if pin_bar_15m:     trig.append("15m Pin Bar")
         if engulf_bull_15m: trig.append("15m Engulfing")
         reason.append(f"LONG Confluence: 1D Fast UP + 1H Bull Div + {' + '.join(trig)}.")
-        rec = "STRONG BUY"
 
         fvg_bottom = curr_1h.get('active_bull_fvg_bottom', entry - atr_1h)
         stop   = (fvg_bottom if pd.notna(fvg_bottom) else entry) - atr_1h
         target = max(df_1h['High'].rolling(20).max().iloc[-1], entry + 2.5 * atr_1h)
-        # FIX 1: is_short=False for long trades
         rr, upside_str, _, rr_str, rr_ok = _calc_rr(entry, stop, target, is_short=False)
 
         if not rr_ok:
@@ -299,7 +285,6 @@ def analyze_asset(ticker: str, data_1d: pd.DataFrame, data_1h: pd.DataFrame,
 
     elif is_short_setup:
         signal = "Short Setup"; score = 90; rec = "STRONG SHORT"
-        # FIX 6: MACD confirmation adds +3 conviction
         if macd_bear:
             score += 3
             reason.append("MACD Hist falling — bearish momentum confirmed.")
@@ -311,7 +296,6 @@ def analyze_asset(ticker: str, data_1d: pd.DataFrame, data_1h: pd.DataFrame,
 
         stop   = entry + atr_1h
         target = min(df_1h['Low'].rolling(20).min().iloc[-1], entry - 2.5 * atr_1h)
-        # FIX 1: is_short=True so reward/risk are sign-correct
         rr, upside_str, _, rr_str, rr_ok = _calc_rr(entry, stop, target, is_short=True)
 
         if not rr_ok:
@@ -321,23 +305,21 @@ def analyze_asset(ticker: str, data_1d: pd.DataFrame, data_1h: pd.DataFrame,
 
     elif trend_1d == "UP":
         if is_overbought:
-            reason.append(f"EXHAUSTION VETO: 1D RSI={round(daily_rsi,1)} (>75). Do NOT buy extended markets.")
+            reason.append(f"EXHAUSTION VETO: 1D RSI={round(daily_rsi,1)}, 1H StochRSI={'OB' if stoch_ob_1h else 'OK'}. Do NOT buy extended markets.")
             signal = "Avoid"; score = 20; rec = "AVOID"
         else:
             signal = "Trend Up"; score = 60; rec = "WAIT FOR DIP"
             reason.append("1D Fast Uptrend active. Awaiting 1H divergence + 15m execution trigger.")
         stop = None
-
     else:
         if is_oversold:
-            reason.append(f"Oversold Alert: 1D RSI={round(daily_rsi,1)} (<30). Watch for bullish reversal trigger.")
+            reason.append(f"Oversold Alert: RSI={round(daily_rsi,1)}, StochRSI={'OS' if stoch_os_1h else 'OK'}. Watch for bullish reversal trigger.")
             score = 35
         else:
             score = 25
             reason.append("1D Downtrend. Avoid longs. Monitor for Short Setup.")
         signal = "Trend Down"; rec = "AVOID"; stop = None
 
-    # SPY Macro Breadth Penalty
     if spy_trend == "DOWN" and signal in ["Good Entry", "Trend Up"]:
         score -= 20
         reason.append("SPY Macro Penalty: Market breadth is bearish.")
@@ -359,6 +341,9 @@ def analyze_asset(ticker: str, data_1d: pd.DataFrame, data_1h: pd.DataFrame,
         "reason":         " ".join(reason),
         "trend_1d":       trend_1d,
         "div_1h":         div_1h,
+        "rsi_1d":         round(daily_rsi, 1),
+        "stoch_1h":       round(curr_1h['stoch_rsi_k'], 1),
+        "macd_conf":      "Yes" if macd_bull or macd_bear else "No",
         "fvg_tap":        fvg_tap,
         "pa_trigger":     pa_trigger,
         "current_price":  round(entry, 4)
@@ -366,23 +351,18 @@ def analyze_asset(ticker: str, data_1d: pd.DataFrame, data_1h: pd.DataFrame,
 
 
 # ─────────────────────────────────────────────────────────────────
-# CRYPTO ANALYZER (MTF Sniper — same 6 fixes applied)
+# CRYPTO ANALYZER — Full MTF Sniper (same upgrades)
 # ─────────────────────────────────────────────────────────────────
 def analyze_crypto_asset(ticker: str, data_1d: pd.DataFrame, data_1h: pd.DataFrame,
                          data_15m: pd.DataFrame, btc_1d: pd.DataFrame) -> dict:
-    """
-    Full MTF Sniper engine for Crypto.
-    All 6 fixes applied identically to the equity analyzer.
-    """
-    # FIX 2: initialise output variables at top of function scope
     upside_str = "N/A"
     rr_str     = "N/A"
     stop       = None
 
     EMPTY = {"ticker": ticker, "recommendation": "AVOID", "upside": "N/A",
-             "stop_loss": "N/A", "rr": "N/A", "signal": "Avoid",
-             "score": 0, "reason": "Insufficient Data",
-             "trend_1d": "N/A", "div_1h": "N/A",
+             "stop_loss": "N/A", "rr": "N/A", "signal": "Avoid", "score": 0,
+             "reason": "Insufficient Data", "trend_1d": "N/A", "div_1h": "N/A",
+             "rsi_1d": "N/A", "stoch_1h": "N/A", "macd_conf": "N/A",
              "fvg_tap": False, "pa_trigger": False, "current_price": 0}
 
     df_1d  = calculate_indicators(data_1d).dropna()
@@ -398,25 +378,23 @@ def analyze_crypto_asset(ticker: str, data_1d: pd.DataFrame, data_1h: pd.DataFra
 
     trend_1d      = "UP" if curr_1d['ema_9'] > curr_1d['ema_21'] else "DOWN"
     daily_rsi     = curr_1d['rsi']
-    is_overbought = daily_rsi > 75
-    is_oversold   = daily_rsi < 30
+    stoch_ob_1h   = _stoch_overbought(curr_1h)
+    stoch_os_1h   = _stoch_oversold(curr_1h)
+    is_overbought = (daily_rsi > 75) or (daily_rsi > 68 and stoch_ob_1h)
+    is_oversold   = (daily_rsi < 30) or (daily_rsi < 35 and stoch_os_1h)
 
     btc_df    = calculate_indicators(btc_1d).dropna()
     btc_trend = "UP" if (not btc_df.empty and btc_df.iloc[-1]['ema_9'] > btc_df.iloc[-1]['ema_21']) else "DOWN"
 
-    div_1h = detect_divergence(df_1h)
-
-    # FIX 6: MACD confirmation on 1H
+    div_1h    = detect_divergence(df_1h)
     macd_bull = _macd_confirms_long(curr_1h)
     macd_bear = _macd_confirms_short(curr_1h)
 
-    # Bullish triggers
-    tap_bull_fvg   = bool(curr_1h['tapping_bull_fvg'])
-    pin_bar_15m    = bool(curr_15m['is_pin_bar'])
-    engulf_15m     = bool(curr_15m['is_engulfing_pa'])
-    bull_trig_15m  = pin_bar_15m or engulf_15m
+    tap_bull_fvg    = bool(curr_1h['tapping_bull_fvg'])
+    pin_bar_15m     = bool(curr_15m['is_pin_bar'])
+    engulf_15m      = bool(curr_15m['is_engulfing_pa'])
+    bull_trig_15m   = pin_bar_15m or engulf_15m
 
-    # Bearish triggers
     tap_bear_fvg    = bool(curr_1h['tapping_bear_fvg'])
     bear_pin_15m    = bool(curr_15m['is_bear_pin_bar'])
     bear_engulf_15m = bool(curr_15m['is_bear_engulfing_pa'])
@@ -424,24 +402,16 @@ def analyze_crypto_asset(ticker: str, data_1d: pd.DataFrame, data_1h: pd.DataFra
 
     entry  = curr_15m['Close']
     atr_1h = curr_1h['atr_10']
-
-    score  = 50
-    signal = "Avoid"
-    rec    = "AVOID"
-    reason = []
+    score  = 50; signal = "Avoid"; rec = "AVOID"; reason = []
 
     is_bull_setup = (
         trend_1d == "UP" and
         ((div_1h == "Bullish") or tap_bull_fvg) and
-        bull_trig_15m and
-        not is_overbought
+        bull_trig_15m and not is_overbought
     )
-
     is_short_setup = (
-        trend_1d == "DOWN" and
-        div_1h == "Bearish" and
-        (tap_bear_fvg or bear_trig_15m) and
-        not is_oversold
+        trend_1d == "DOWN" and div_1h == "Bearish" and
+        (tap_bear_fvg or bear_trig_15m) and not is_oversold
     )
 
     if is_bull_setup:
@@ -449,8 +419,7 @@ def analyze_crypto_asset(ticker: str, data_1d: pd.DataFrame, data_1h: pd.DataFra
         if macd_bull:
             score += 3
             reason.append("MACD Hist rising — momentum confirmed.")
-        setup = []
-        trig  = []
+        setup = []; trig = []
         if div_1h == "Bullish": setup.append("1H Bull Div")
         if tap_bull_fvg:        setup.append("1H FVG Tap")
         if pin_bar_15m:         trig.append("15m Pin Bar")
@@ -460,7 +429,6 @@ def analyze_crypto_asset(ticker: str, data_1d: pd.DataFrame, data_1h: pd.DataFra
         fvg_bottom = curr_1h.get('active_bull_fvg_bottom', entry - atr_1h)
         stop   = (fvg_bottom if pd.notna(fvg_bottom) else entry) - atr_1h
         target = max(df_1h['High'].rolling(20).max().iloc[-1], entry + 2.5 * atr_1h)
-        # FIX 1: is_short=False
         rr, upside_str, _, rr_str, rr_ok = _calc_rr(entry, stop, target, is_short=False)
 
         if not rr_ok:
@@ -481,7 +449,6 @@ def analyze_crypto_asset(ticker: str, data_1d: pd.DataFrame, data_1h: pd.DataFra
 
         stop   = entry + atr_1h
         target = min(df_1h['Low'].rolling(20).min().iloc[-1], entry - 2.5 * atr_1h)
-        # FIX 1: is_short=True so math is sign-correct
         rr, upside_str, _, rr_str, rr_ok = _calc_rr(entry, stop, target, is_short=True)
 
         if not rr_ok:
@@ -492,22 +459,20 @@ def analyze_crypto_asset(ticker: str, data_1d: pd.DataFrame, data_1h: pd.DataFra
     elif trend_1d == "UP":
         if is_overbought:
             signal = "Avoid"; score = 20; rec = "AVOID"
-            reason.append(f"EXHAUSTION VETO: 1D RSI={round(daily_rsi,1)} (>75). Market too extended.")
+            reason.append(f"EXHAUSTION VETO: 1D RSI={round(daily_rsi,1)}, 1H StochRSI={'OB' if stoch_ob_1h else 'OK'}.")
         else:
             signal = "Trend Up"; score = 60; rec = "WAIT FOR DIP"
             reason.append("1D Fast Uptrend active. Awaiting 15m execution trigger inside 1H setup zone.")
         stop = None
-
     else:
         if is_oversold:
-            reason.append(f"Capitulation Watch: 1D RSI={round(daily_rsi,1)}. Possible bottom formation.")
+            reason.append(f"Capitulation Watch: RSI={round(daily_rsi,1)}. Possible bottom formation.")
             score = 35
         else:
             score = 25
             reason.append("1D Downtrend. Avoid longs.")
         signal = "Trend Down"; rec = "AVOID"; stop = None
 
-    # BTC Macro Filter
     if btc_trend == "DOWN" and signal in ["Good Entry", "Trend Up"]:
         score -= 25
         reason.append("BTC Macro Penalty: Bitcoin 1D is DOWN.")
@@ -529,6 +494,9 @@ def analyze_crypto_asset(ticker: str, data_1d: pd.DataFrame, data_1h: pd.DataFra
         "reason":         " ".join(reason),
         "trend_1d":       trend_1d,
         "div_1h":         div_1h,
+        "rsi_1d":         round(daily_rsi, 1),
+        "stoch_1h":       round(curr_1h['stoch_rsi_k'], 1),
+        "macd_conf":      "Yes" if macd_bull or macd_bear else "No",
         "fvg_tap":        tap_bull_fvg,
         "pa_trigger":     bull_trig_15m,
         "current_price":  round(entry, 4)

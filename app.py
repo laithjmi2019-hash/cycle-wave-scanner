@@ -92,7 +92,8 @@ def main():
             scan_df, market_data = load_and_scan_market()
             
         if not scan_df.empty:
-            cols_to_show = ['ticker','recommendation','signal','score','upside','stop_loss','rr','trend_1d','div_1h','reason']
+            cols_to_show = ['ticker','recommendation','signal','score','upside','stop_loss','rr',
+                            'trend_1d','div_1h','rsi_1d','stoch_1h','macd_conf','reason']
             cols_to_show = [c for c in cols_to_show if c in scan_df.columns]
             styled_df = scan_df[cols_to_show].style.apply(highlight_signals, subset=['signal','recommendation'])
             st.dataframe(styled_df, use_container_width=True)
@@ -111,7 +112,8 @@ def main():
             crypto_df, crypto_data = load_and_scan_crypto()
             
         if not crypto_df.empty:
-            cols_to_show = ['ticker','recommendation','signal','score','upside','stop_loss','rr','trend_1d','div_1h','reason']
+            cols_to_show = ['ticker','recommendation','signal','score','upside','stop_loss','rr',
+                            'trend_1d','div_1h','rsi_1d','stoch_1h','macd_conf','reason']
             cols_to_show = [c for c in cols_to_show if c in crypto_df.columns]
             styled_crypto_df = crypto_df[cols_to_show].style.apply(highlight_signals, subset=['signal','recommendation'])
             st.dataframe(styled_crypto_df, use_container_width=True)
@@ -181,8 +183,6 @@ def main():
             
             # Row 1: Core Action Metrics
             col1, col2, col3 = st.columns(3)
-            is_short = res.get('recommendation','') == 'STRONG SHORT'
-            rec_color = "inverse" if is_short else "normal"
             col1.metric("Recommendation", res["recommendation"])
             col2.metric("Signal", res["signal"])
             col3.metric("Conviction Score", f"{res['score']}%")
@@ -196,10 +196,12 @@ def main():
             col7.metric("1D Trend", res["trend_1d"])
             
             st.markdown("---")
-            # Row 3: Signals
-            col8, col9 = st.columns(2)
+            # Row 3: Technical Readings
+            col8, col9, col10, col11 = st.columns(4)
             col8.metric("1H Divergence", res["div_1h"])
-            col9.metric("Current Price", f"${res.get('current_price', 'N/A')}")
+            col9.metric("1D RSI", res.get("rsi_1d", "N/A"))
+            col10.metric("1H StochRSI K", res.get("stoch_1h", "N/A"))
+            col11.metric("MACD Confirmed", res.get("macd_conf", "N/A"))
             
             st.info(f"**Reason:** {res['reason']}")
             st.plotly_chart(plot_chart(df_1h_ind, search_ticker, "1H"), use_container_width=True)
