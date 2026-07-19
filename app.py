@@ -19,7 +19,7 @@ def load_and_scan_market():
     for ticker, data in market_data.items():
         if ticker == "SPY":
             continue
-        res = analyze_asset(ticker, data["1d"], data["1h"], spy_data)
+        res = analyze_asset(ticker, data["1d"], data["1h"], data["15m"], spy_data)
         results.append(res)
         
     df_res = pd.DataFrame(results)
@@ -69,9 +69,17 @@ def main():
     
     tab1, tab2, tab3 = st.tabs(["Top 100 Scanner", "Search & Analyze", "Top 25 Crypto Scanner"])
     
-    # Highlight 'Good Entry' and 'STRONG BUY'
-    def highlight_good_entry(s):
-        return ['background-color: #d4edda; color: #155724; font-weight: bold;' if v in ['Good Entry', 'STRONG BUY'] else '' for v in s]
+    # Highlighting: STRONG BUY (green) | STRONG SHORT (red)
+    def highlight_signals(s):
+        styles = []
+        for v in s:
+            if v in ['Good Entry', 'STRONG BUY']:
+                styles.append('background-color: #d4edda; color: #155724; font-weight: bold;')
+            elif v in ['Short Setup', 'STRONG SHORT']:
+                styles.append('background-color: #f8d7da; color: #721c24; font-weight: bold;')
+            else:
+                styles.append('')
+        return styles
             
     with tab1:
         st.header("Top 100 US Equities Scanner")
@@ -84,7 +92,9 @@ def main():
             scan_df, market_data = load_and_scan_market()
             
         if not scan_df.empty:
-            styled_df = scan_df.style.apply(highlight_good_entry, subset=['signal', 'recommendation'])
+            cols_to_show = ['ticker','recommendation','signal','score','upside','stop_loss','rr','trend_1d','div_1h','reason']
+            cols_to_show = [c for c in cols_to_show if c in scan_df.columns]
+            styled_df = scan_df[cols_to_show].style.apply(highlight_signals, subset=['signal','recommendation'])
             st.dataframe(styled_df, use_container_width=True)
         else:
             st.warning("No data returned.")
@@ -101,7 +111,9 @@ def main():
             crypto_df, crypto_data = load_and_scan_crypto()
             
         if not crypto_df.empty:
-            styled_crypto_df = crypto_df.style.apply(highlight_good_entry, subset=['signal', 'recommendation'])
+            cols_to_show = ['ticker','recommendation','signal','score','upside','stop_loss','rr','trend_1d','div_1h','reason']
+            cols_to_show = [c for c in cols_to_show if c in crypto_df.columns]
+            styled_crypto_df = crypto_df[cols_to_show].style.apply(highlight_signals, subset=['signal','recommendation'])
             st.dataframe(styled_crypto_df, use_container_width=True)
         else:
             st.warning("No data returned.")
@@ -136,23 +148,24 @@ def main():
             st.session_state.last_ticker = search_ticker
             with st.spinner("Fetching and analyzing..."):
                 is_crypto = search_ticker.endswith("-USD")
-                t, d1d, d1h, d15m = fetch_ticker_data_sync(search_ticker, fetch_15m=is_crypto)
+                t, d1d, d1h, d15m = fetch_ticker_data_sync(search_ticker, fetch_15m=True)
                 
                 if 'market_data' in locals() and "SPY" in market_data:
                     spy_1d = market_data["SPY"]["1d"]
                 else:
-                    _, spy_1d, _, _ = fetch_ticker_data_sync("SPY")
+                    _, spy_1d, _, _ = fetch_ticker_data_sync("SPY", fetch_15m=False)
                     
+                btc_1d = None
                 if is_crypto:
-                    _, btc_1d, _, _ = fetch_ticker_data_sync("BTC-USD")
+                    _, btc_1d, _, _ = fetch_ticker_data_sync("BTC-USD", fetch_15m=False)
                 
-                if d1d is not None and d1h is not None and spy_1d is not None:
-                    if is_crypto and d15m is not None and btc_1d is not None:
+                if d1d is not None and d1h is not None and d15m is not None and spy_1d is not None:
+                    if is_crypto and btc_1d is not None:
                         res = analyze_crypto_asset(search_ticker, d1d, d1h, d15m, btc_1d)
-                        header = f"MTF Institutional Crypto Analysis for {search_ticker}"
+                        header = f"MTF Institutional Crypto Analysis — {search_ticker}"
                     else:
-                        res = analyze_asset(search_ticker, d1d, d1h, spy_1d)
-                        header = f"Institutional Equity Analysis for {search_ticker}"
+                        res = analyze_asset(search_ticker, d1d, d1h, d15m, spy_1d)
+                        header = f"Institutional Equity Analysis — {search_ticker}"
                         
                     df_1h_ind = calculate_indicators(d1h)
                     st.session_state.tab2_result = (header, res, df_1h_ind)
@@ -166,16 +179,27 @@ def main():
             header, res, df_1h_ind = st.session_state.tab2_result
             st.subheader(header)
             
+            # Row 1: Core Action Metrics
             col1, col2, col3 = st.columns(3)
+            is_short = res.get('recommendation','') == 'STRONG SHORT'
+            rec_color = "inverse" if is_short else "normal"
             col1.metric("Recommendation", res["recommendation"])
             col2.metric("Signal", res["signal"])
-            col3.metric("Predicted Upside", res["upside"])
+            col3.metric("Conviction Score", f"{res['score']}%")
             
             st.markdown("---")
-            col4, col5, col6 = st.columns(3)
-            col4.metric("Conviction Score", f"{res['score']}%")
-            col5.metric("1D Trend", res["trend_1d"])
-            col6.metric("1H Divergence", res["div_1h"])
+            # Row 2: Trade Parameters
+            col4, col5, col6, col7 = st.columns(4)
+            col4.metric("Predicted Move", res.get("upside", "N/A"))
+            col5.metric("Stop Loss", res.get("stop_loss", "N/A"))
+            col6.metric("Risk/Reward", res.get("rr", "N/A"))
+            col7.metric("1D Trend", res["trend_1d"])
+            
+            st.markdown("---")
+            # Row 3: Signals
+            col8, col9 = st.columns(2)
+            col8.metric("1H Divergence", res["div_1h"])
+            col9.metric("Current Price", f"${res.get('current_price', 'N/A')}")
             
             st.info(f"**Reason:** {res['reason']}")
             st.plotly_chart(plot_chart(df_1h_ind, search_ticker, "1H"), use_container_width=True)
