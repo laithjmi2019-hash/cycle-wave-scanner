@@ -3,6 +3,7 @@ import pandas as pd
 import plotly.graph_objects as go
 from data_fetcher import get_market_data, get_crypto_data, fetch_ticker_data_sync
 from analyzer import analyze_asset, analyze_crypto_asset, calculate_indicators
+from mappings import TICKER_MAPPINGS
 
 st.set_page_config(page_title="Cycle & Wave Scanner", layout="wide")
 
@@ -107,7 +108,17 @@ def main():
 
     with tab2:
         st.header("Search Individual Ticker")
-        search_ticker = st.text_input("Enter Ticker (e.g. NVDA, TSLA, BTC-USD):", "NVDA").upper()
+        
+        # Smart Autocomplete
+        options = ["Custom Ticker..."] + list(TICKER_MAPPINGS.keys())
+        selected_option = st.selectbox("Search Company, Crypto, or Ticker (Type to filter):", options)
+        
+        if selected_option == "Custom Ticker...":
+            search_ticker = st.text_input("Enter Custom Ticker (e.g. NVDA, TSLA, BTC-USD):", "NVDA").upper()
+        else:
+            search_ticker = TICKER_MAPPINGS[selected_option]
+            st.info(f"Selected Ticker: **{search_ticker}**")
+            
         if st.button("Analyze"):
             with st.spinner("Fetching and analyzing..."):
                 is_crypto = search_ticker.endswith("-USD")
