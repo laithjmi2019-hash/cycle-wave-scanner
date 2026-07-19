@@ -56,7 +56,7 @@ def main():
         if not scan_df.empty:
             # Highlight 'Good Entry' specifically
             def highlight_good_entry(s):
-                return ['background-color: #004d00' if v == 'Good Entry' else '' for v in s]
+                return ['background-color: #d4edda; color: #155724; font-weight: bold;' if v == 'Good Entry' else '' for v in s]
             
             styled_df = scan_df.style.apply(highlight_good_entry, subset=['signal'])
             st.dataframe(styled_df, use_container_width=True)
