@@ -25,15 +25,17 @@ TOP_25_CRYPTO = [
 ]
 
 def fetch_ticker_data_sync(ticker: str, fetch_15m: bool = False):
-    """Fetch 1D, 1H, and optionally 15m data for a single ticker."""
+    """Fetch 1D, 1H, and optionally 15m data. prepost=False excludes pre/after-market noise."""
     try:
         t = yf.Ticker(ticker)
-        df_1d = t.history(period="1y", interval="1d")
-        df_1h = t.history(period="60d", interval="1h")
+        # FIX 3: prepost=False strips pre-market and after-hours candles from intraday data
+        df_1d = t.history(period="1y",  interval="1d",  prepost=False)
+        df_1h = t.history(period="60d", interval="1h",  prepost=False)
         
         df_15m = None
         if fetch_15m:
-            df_15m = t.history(period="60d", interval="15m")
+            # FIX 8: period reduced from 60d to 7d — we only need last 50 candles for signal
+            df_15m = t.history(period="7d", interval="15m", prepost=False)
             
         if df_1d.empty or df_1h.empty or (fetch_15m and df_15m.empty):
             return ticker, None, None, None

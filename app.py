@@ -7,7 +7,7 @@ from mappings import TICKER_MAPPINGS
 
 st.set_page_config(page_title="Cycle & Wave Scanner", layout="wide")
 
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=900)  # FIX 7: 15min cache matches intraday strategy (was 3600)
 def load_and_scan_market():
     market_data = get_market_data()
     if "SPY" not in market_data:
