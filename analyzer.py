@@ -98,7 +98,7 @@ def analyze_asset(ticker: str, data_1d: pd.DataFrame, data_1h: pd.DataFrame, spy
     df_1h = calculate_indicators(data_1h).dropna()
     
     if df_1d.empty or df_1h.empty:
-        return {"ticker": ticker, "signal": "Avoid", "score": 0, "reason": "Insufficient Data"}
+        return {"ticker": ticker, "recommendation": "AVOID", "upside": "N/A", "signal": "Avoid", "score": 0, "reason": "Insufficient Data"}
         
     curr_1d = df_1d.iloc[-1]
     curr_1h = df_1h.iloc[-1]
@@ -191,7 +191,7 @@ def analyze_crypto_asset(ticker: str, data_1d: pd.DataFrame, data_1h: pd.DataFra
     df_15m = calculate_indicators(data_15m).dropna()
     
     if df_1d.empty or df_1h.empty or df_15m.empty:
-        return {"ticker": ticker, "signal": "Avoid", "score": 0, "reason": "Insufficient Data"}
+        return {"ticker": ticker, "recommendation": "AVOID", "upside": "N/A", "signal": "Avoid", "score": 0, "reason": "Insufficient Data"}
         
     curr_1d = df_1d.iloc[-1]
     curr_1h = df_1h.iloc[-1]
