@@ -1,10 +1,6 @@
 import yfinance as yf
 import pandas as pd
-import asyncio
-import nest_asyncio
-
-# Apply nest_asyncio to allow running asyncio in Streamlit/Jupyter
-nest_asyncio.apply()
+from concurrent.futures import ThreadPoolExecutor
 
 # Top 100 US Equities
 TOP_100_TICKERS = [
@@ -34,25 +30,15 @@ def fetch_ticker_data_sync(ticker: str):
     except Exception as e:
         return ticker, None, None
 
-async def fetch_all_tickers_async(tickers: list):
-    """Asynchronously fetch data for multiple tickers using ThreadPool."""
-    loop = asyncio.get_running_loop()
-    tasks = [
-        loop.run_in_executor(None, fetch_ticker_data_sync, ticker)
-        for ticker in tickers
-    ]
-    results = await asyncio.gather(*tasks)
-    return results
-
 def get_market_data():
-    """Wrapper to fetch market breadth (SPY) + top 100 concurrently."""
-    loop = asyncio.get_event_loop()
+    """Wrapper to fetch market breadth (SPY) + top 100 concurrently using ThreadPool."""
     tickers_to_fetch = ["SPY"] + TOP_100_TICKERS
-    results = loop.run_until_complete(fetch_all_tickers_async(tickers_to_fetch))
     
     data_dict = {}
-    for ticker, df_1d, df_1h in results:
-        if df_1d is not None and df_1h is not None:
-            data_dict[ticker] = {"1d": df_1d, "1h": df_1h}
-            
+    with ThreadPoolExecutor(max_workers=20) as executor:
+        results = executor.map(fetch_ticker_data_sync, tickers_to_fetch)
+        for ticker, df_1d, df_1h in results:
+            if df_1d is not None and df_1h is not None:
+                data_dict[ticker] = {"1d": df_1d, "1h": df_1h}
+                
     return data_dict

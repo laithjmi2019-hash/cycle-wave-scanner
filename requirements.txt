@@ -5,4 +5,3 @@ numpy<2.0.0
 ta
 plotly
 aiohttp
-nest-asyncio
