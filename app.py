@@ -110,16 +110,22 @@ def main():
         st.header("Search Individual Ticker")
         
         # Smart Autocomplete
-        options = ["Custom Ticker..."] + list(TICKER_MAPPINGS.keys())
-        selected_option = st.selectbox("Search Company, Crypto, or Ticker (Type to filter):", options)
+        options = list(TICKER_MAPPINGS.keys()) + ["Other (Custom Ticker)"]
+        selected_option = st.selectbox(
+            "Search Company, Crypto, or Ticker (Type to filter):", 
+            options,
+            index=None,
+            placeholder="Type 'Apple', 'Bitcoin', or 'AAPL'..."
+        )
         
-        if selected_option == "Custom Ticker...":
-            search_ticker = st.text_input("Enter Custom Ticker (e.g. NVDA, TSLA, BTC-USD):", "NVDA").upper()
-        else:
+        search_ticker = None
+        if selected_option == "Other (Custom Ticker)":
+            search_ticker = st.text_input("Enter Custom Ticker Symbol (e.g. PLTR):", "").upper()
+        elif selected_option:
             search_ticker = TICKER_MAPPINGS[selected_option]
             st.info(f"Selected Ticker: **{search_ticker}**")
             
-        if st.button("Analyze"):
+        if st.button("Analyze") and search_ticker:
             with st.spinner("Fetching and analyzing..."):
                 is_crypto = search_ticker.endswith("-USD")
                 t, d1d, d1h, d15m = fetch_ticker_data_sync(search_ticker, fetch_15m=is_crypto)
