@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
-from data_fetcher import get_market_data, fetch_ticker_data_sync
+from data_fetcher import get_market_data, get_crypto_data, fetch_ticker_data_sync
 from analyzer import analyze_asset, calculate_indicators
 
 st.set_page_config(page_title="Cycle & Wave Scanner", layout="wide")
@@ -19,6 +19,28 @@ def load_and_scan_market():
         if ticker == "SPY":
             continue
         res = analyze_asset(ticker, data["1d"], data["1h"], spy_data)
+        results.append(res)
+        
+    df_res = pd.DataFrame(results)
+    if not df_res.empty:
+        df_res = df_res.sort_values(by="score", ascending=False).reset_index(drop=True)
+    return df_res, market_data
+
+@st.cache_data(ttl=900) # Crypto is faster moving, 15 min cache
+def load_and_scan_crypto():
+    market_data = get_crypto_data()
+    if "BTC-USD" not in market_data:
+        return pd.DataFrame(), market_data
+        
+    btc_data = market_data["BTC-USD"]["1d"]
+    results = []
+    
+    for ticker, data in market_data.items():
+        if ticker == "BTC-USD":
+            continue
+        # BTC-USD is used as the 'spy_data' breadth filter! 
+        # If Bitcoin is in a downtrend, altcoins are penalized.
+        res = analyze_asset(ticker, data["1d"], data["1h"], btc_data)
         results.append(res)
         
     df_res = pd.DataFrame(results)
@@ -45,8 +67,12 @@ def plot_chart(df: pd.DataFrame, ticker: str, timeframe: str):
 def main():
     st.title("🌊 Institutional Cycle & Wave Scanner (SMC Edition)")
     
-    tab1, tab2 = st.tabs(["Top 100 Scanner", "Search & Analyze"])
+    tab1, tab2, tab3 = st.tabs(["Top 100 Scanner", "Search & Analyze", "Top 25 Crypto Scanner"])
     
+    # Highlight 'Good Entry' specifically
+    def highlight_good_entry(s):
+        return ['background-color: #d4edda; color: #155724; font-weight: bold;' if v == 'Good Entry' else '' for v in s]
+            
     with tab1:
         st.header("Top 100 US Equities Scanner")
         st.markdown("**Strict Confluence Requirements:** 1D Trend UP + Bullish Divergence + Liquidity Tap (FVG/Pin Bar/Engulfing)")
@@ -58,12 +84,25 @@ def main():
             scan_df, market_data = load_and_scan_market()
             
         if not scan_df.empty:
-            # Highlight 'Good Entry' specifically
-            def highlight_good_entry(s):
-                return ['background-color: #d4edda; color: #155724; font-weight: bold;' if v == 'Good Entry' else '' for v in s]
-            
             styled_df = scan_df.style.apply(highlight_good_entry, subset=['signal'])
             st.dataframe(styled_df, use_container_width=True)
+        else:
+            st.warning("No data returned.")
+            
+    with tab3:
+        st.header("Top 25 Crypto Scanner")
+        st.markdown("**Strict Confluence Requirements:** 1D Trend UP + Bullish Divergence + Liquidity Tap (FVG/Pin Bar/Engulfing)")
+        st.info("💡 **Smart Money Logic:** Bitcoin (`BTC-USD`) is acting as the macro-breadth filter for this tab. If Bitcoin's 1D Trend is DOWN, altcoins face a major conviction penalty.")
+        
+        if st.button("🔄 Force Fresh Crypto Scan"):
+            load_and_scan_crypto.clear()
+            
+        with st.spinner("Fetching data asynchronously (Zero Lookahead)..."):
+            crypto_df, crypto_data = load_and_scan_crypto()
+            
+        if not crypto_df.empty:
+            styled_crypto_df = crypto_df.style.apply(highlight_good_entry, subset=['signal'])
+            st.dataframe(styled_crypto_df, use_container_width=True)
         else:
             st.warning("No data returned.")
 
