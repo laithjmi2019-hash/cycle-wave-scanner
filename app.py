@@ -123,9 +123,17 @@ def main():
             search_ticker = st.text_input("Enter Custom Ticker Symbol (e.g. PLTR):", "").upper()
         elif selected_option:
             search_ticker = TICKER_MAPPINGS[selected_option]
-            st.info(f"Selected Ticker: **{search_ticker}**")
             
-        if st.button("Analyze") and search_ticker:
+        analyze_clicked = st.button("Analyze")
+        
+        # Session state for auto-run and persistence
+        if "last_ticker" not in st.session_state:
+            st.session_state.last_ticker = None
+            
+        ticker_changed = (search_ticker and search_ticker != st.session_state.last_ticker)
+            
+        if search_ticker and (analyze_clicked or ticker_changed):
+            st.session_state.last_ticker = search_ticker
             with st.spinner("Fetching and analyzing..."):
                 is_crypto = search_ticker.endswith("-USD")
                 t, d1d, d1h, d15m = fetch_ticker_data_sync(search_ticker, fetch_15m=is_crypto)
@@ -141,23 +149,30 @@ def main():
                 if d1d is not None and d1h is not None and spy_1d is not None:
                     if is_crypto and d15m is not None and btc_1d is not None:
                         res = analyze_crypto_asset(search_ticker, d1d, d1h, d15m, btc_1d)
-                        st.subheader(f"MTF Institutional Crypto Analysis for {search_ticker}")
+                        header = f"MTF Institutional Crypto Analysis for {search_ticker}"
                     else:
                         res = analyze_asset(search_ticker, d1d, d1h, spy_1d)
-                        st.subheader(f"Institutional Equity Analysis for {search_ticker}")
+                        header = f"Institutional Equity Analysis for {search_ticker}"
                         
-                    col1, col2, col3, col4 = st.columns(4)
-                    col1.metric("Signal", res["signal"])
-                    col2.metric("Conviction Score", f"{res['score']}%")
-                    col3.metric("1D Trend", res["trend_1d"])
-                    col4.metric("1H Divergence", res["div_1h"])
-                    
-                    st.info(f"**Reason:** {res['reason']}")
-                    
                     df_1h_ind = calculate_indicators(d1h)
-                    st.plotly_chart(plot_chart(df_1h_ind, search_ticker, "1H"), use_container_width=True)
+                    st.session_state.tab2_result = (header, res, df_1h_ind)
                 else:
                     st.error("Failed to fetch data for ticker. Ensure it's a valid Yahoo Finance ticker (e.g., TSLA, BTC-USD).")
+                    if "tab2_result" in st.session_state:
+                        del st.session_state.tab2_result
+
+        # Render the result if it exists and matches the current ticker
+        if "tab2_result" in st.session_state and search_ticker == st.session_state.last_ticker and search_ticker:
+            header, res, df_1h_ind = st.session_state.tab2_result
+            st.subheader(header)
+            col1, col2, col3, col4 = st.columns(4)
+            col1.metric("Signal", res["signal"])
+            col2.metric("Conviction Score", f"{res['score']}%")
+            col3.metric("1D Trend", res["trend_1d"])
+            col4.metric("1H Divergence", res["div_1h"])
+            
+            st.info(f"**Reason:** {res['reason']}")
+            st.plotly_chart(plot_chart(df_1h_ind, search_ticker, "1H"), use_container_width=True)
 
 if __name__ == "__main__":
     main()
