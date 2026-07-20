@@ -78,6 +78,7 @@ def run_scan():
             send_telegram_message(msg)
     else:
         print("No sniper signals found this hour.")
+        send_telegram_message("✅ <b>Scan Complete</b>\n\nNo Sniper or Momentum signals found in the last 30 minutes. Continuing to monitor 245 assets...")
 
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "--test":
