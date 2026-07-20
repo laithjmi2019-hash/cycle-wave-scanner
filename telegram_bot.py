@@ -44,7 +44,7 @@ def run_scan():
     for ticker in TICKERS:
         try:
             t = yf.Ticker(ticker)
-            d1d = t.history(period="6mo", interval="1d", prepost=False)
+            d1d = t.history(period="1y", interval="1d", prepost=False)
             d1h = t.history(period="60d", interval="1h", prepost=False)
             
             if d1d.empty or d1h.empty:
@@ -78,7 +78,7 @@ def run_scan():
             send_telegram_message(msg)
     else:
         print("No sniper signals found this hour.")
-        send_telegram_message("✅ <b>Scan Complete</b>\n\nNo Sniper or Momentum signals found in the last 30 minutes. Continuing to monitor 245 assets...")
+        send_telegram_message("✅ <b>Scan Complete</b>\n\nNo Sniper or Momentum signals found in the last 1 Hour. Continuing to monitor 245 assets...")
 
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "--test":
