@@ -38,7 +38,7 @@ def send_telegram_message(text):
         print(f"Error sending message: {e}")
 
 def run_scan():
-    print(f"Starting V7.0 Global Sniper Scan at {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"Starting V10.0 Global Sniper Scan at {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     signals_found = []
     
     for ticker in TICKERS:
@@ -82,6 +82,6 @@ def run_scan():
 
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "--test":
-        send_telegram_message("✅ <b>Cycle & Wave Scanner V7.0 (Global Edition)</b>\n\nYour automated background scanner has successfully connected to Telegram and is now tracking 245 global assets (US, EU, China, UAE, Crypto).")
+        send_telegram_message("✅ <b>Cycle & Wave Scanner V10.0 (Global Edition)</b>\n\nYour automated background scanner has successfully connected to Telegram and is now tracking 245 global assets (US, EU, China, UAE, Crypto).")
     else:
         run_scan()

@@ -1,10 +1,44 @@
 import pandas as pd
 import numpy as np
 import ta
+import yfinance as yf
+
+# TOXIC KEYWORDS for fundamental filtering
+TOXIC_KEYWORDS = [
+    "bankruptcy", "scandal", "fraud", "lawsuit", "investigation", 
+    "delisted", "misses earnings", "subpoena", "criminal", "sec probe", "sued"
+]
+
+def check_toxic_news(ticker):
+    """
+    Pulls the latest news from Yahoo Finance.
+    Returns True if any toxic keywords are found in the titles, otherwise False.
+    """
+    try:
+        t = yf.Ticker(ticker)
+        news = t.news
+        if not news:
+            return False
+            
+        for item in news[:5]: # check latest 5 headlines
+            title = ""
+            # Handle new yfinance dict structure
+            if 'content' in item and 'title' in item['content']:
+                title = item['content']['title'].lower()
+            elif 'title' in item:
+                title = item['title'].lower()
+                
+            for word in TOXIC_KEYWORDS:
+                if word in title:
+                    return True # Toxic!
+    except Exception:
+        pass
+    
+    return False
 
 def calculate_indicators(df, full=False):
     """
-    Calculates essential indicators for V8 Hybrid Apex Engine.
+    Calculates essential indicators for V10 Apex Engine.
     Uses 14-RSI, Bollinger Bands, 10-ATR, Volume SMA, and MACD.
     """
     if len(df) < 26:
@@ -19,7 +53,7 @@ def calculate_indicators(df, full=False):
     df['bb_upper'] = bb.bollinger_hband()
     df['bb_middle'] = bb.bollinger_mavg()
     
-    # ATR (10) for scaling stops and targets and deep checks
+    # ATR (10)
     df['atr_10'] = ta.volatility.AverageTrueRange(df['High'], df['Low'], df['Close'], window=10).average_true_range()
     
     # Volume SMA for Breakout Logic
@@ -50,13 +84,18 @@ def _calc_rr(entry, stop, target, is_short=False):
 
 def analyze_asset(ticker, df_1d, df_1h, df_15m, spy_data=None):
     """
-    V8.0 Hybrid Apex Engine:
-    Strategy A (Sniper): Extreme Panic/Euphoria (RSI < 20 or > 80) outside BB. 1:1 RR.
-    Strategy B (Momentum): Breakout of BB with 2x Volume + MACD flipping. 1:1 RR.
+    V10.0 Apex Engine:
+    Includes Multi-Timeframe Alignment (Daily 200 SMA) and NLP News Filtering.
     """
     df1h = calculate_indicators(df_1h).dropna()
     if df1h.empty:
         return None
+
+    # Calculate MTF Daily 200 SMA
+    daily_200_sma = None
+    if df_1d is not None and len(df_1d) >= 200:
+        df_1d['sma_200'] = ta.trend.SMAIndicator(df_1d['Close'], window=200).sma_indicator()
+        daily_200_sma = df_1d['sma_200'].iloc[-1]
 
     c1h = df1h.iloc[-1]
     
@@ -89,51 +128,63 @@ def analyze_asset(ticker, df_1d, df_1h, df_15m, spy_data=None):
     # STRATEGY A: THE SNIPER (DEEP MEAN REVERSION)
     # ====================================================
     if rsi < 20 and entry < (bb_lower - (0.5 * atr)):
-        rec = "LONG SNIPER"
-        signal = "Deep Reversion"
-        score = 99
-        stop_loss = entry - (2.0 * atr)
-        target = entry + (2.0 * atr)
-        reason = "STRATEGY A (SNIPER): Extreme panic detected (RSI < 20) severely below Lower BB. 1:1 R:R profile."
-        
-        _, _, _, rr_str, _ = _calc_rr(entry, stop_loss, target, is_short=False)
-        upside_str = f"+{((target - entry) / entry) * 100:.2f}%"
+        if daily_200_sma and entry < daily_200_sma:
+            reason = "FILTERED (MTF): Price is below Daily 200 SMA. Refusing to catch falling knife."
+        elif check_toxic_news(ticker):
+            reason = "FILTERED (NLP): Toxic news keywords detected (bankruptcy, fraud, etc). Blocking trade."
+        else:
+            rec = "LONG SNIPER"
+            signal = "Deep Reversion"
+            score = 99
+            stop_loss = entry - (2.0 * atr)
+            target = entry + (2.0 * atr)
+            reason = "STRATEGY A (SNIPER): Extreme panic (RSI < 20) in a macro uptrend (Price > 200 SMA)."
+            _, _, _, rr_str, _ = _calc_rr(entry, stop_loss, target, is_short=False)
+            upside_str = f"+{((target - entry) / entry) * 100:.2f}%"
 
     elif rsi > 80 and entry > (bb_upper + (0.5 * atr)):
-        rec = "SHORT SNIPER"
-        signal = "Deep Reversion"
-        score = 99
-        stop_loss = entry + (2.0 * atr)
-        target = entry - (2.0 * atr)
-        reason = "STRATEGY A (SNIPER): Extreme euphoria detected (RSI > 80) severely above Upper BB. 1:1 R:R profile."
-        
-        _, _, _, rr_str, _ = _calc_rr(entry, stop_loss, target, is_short=True)
-        upside_str = f"+{((entry - target) / entry) * 100:.2f}%"
+        if daily_200_sma and entry > daily_200_sma:
+            reason = "FILTERED (MTF): Price is above Daily 200 SMA. Refusing to step in front of bull train."
+        else:
+            rec = "SHORT SNIPER"
+            signal = "Deep Reversion"
+            score = 99
+            stop_loss = entry + (2.0 * atr)
+            target = entry - (2.0 * atr)
+            reason = "STRATEGY A (SNIPER): Extreme euphoria (RSI > 80) in a macro downtrend."
+            _, _, _, rr_str, _ = _calc_rr(entry, stop_loss, target, is_short=True)
+            upside_str = f"+{((entry - target) / entry) * 100:.2f}%"
 
     # ====================================================
     # STRATEGY B: MOMENTUM BREAKOUT
     # ====================================================
     elif entry > bb_upper and vol > (vol_sma * 2.0) and macd_h > 0 and macd_h_prev < 0:
-        rec = "LONG MOMENTUM"
-        signal = "Volume Breakout"
-        score = 95
-        stop_loss = entry - (2.0 * atr)
-        target = entry + (2.0 * atr)
-        reason = "STRATEGY B (MOMENTUM): Price broke Upper BB with >200% average volume & MACD flipped bullish. 1:1 R:R profile."
-        
-        _, _, _, rr_str, _ = _calc_rr(entry, stop_loss, target, is_short=False)
-        upside_str = f"+{((target - entry) / entry) * 100:.2f}%"
+        if daily_200_sma and entry < daily_200_sma:
+            reason = "FILTERED (MTF): Price is below Daily 200 SMA. Ignoring dead-cat bounce."
+        elif check_toxic_news(ticker):
+            reason = "FILTERED (NLP): Toxic news keywords detected. Blocking trade."
+        else:
+            rec = "LONG MOMENTUM"
+            signal = "Volume Breakout"
+            score = 95
+            stop_loss = entry - (2.0 * atr)
+            target = entry + (2.0 * atr)
+            reason = "STRATEGY B (MOMENTUM): Volume breakout in a macro uptrend."
+            _, _, _, rr_str, _ = _calc_rr(entry, stop_loss, target, is_short=False)
+            upside_str = f"+{((target - entry) / entry) * 100:.2f}%"
         
     elif entry < bb_lower and vol > (vol_sma * 2.0) and macd_h < 0 and macd_h_prev > 0:
-        rec = "SHORT MOMENTUM"
-        signal = "Volume Breakdown"
-        score = 95
-        stop_loss = entry + (2.0 * atr)
-        target = entry - (2.0 * atr)
-        reason = "STRATEGY B (MOMENTUM): Price broke Lower BB with >200% average volume & MACD flipped bearish. 1:1 R:R profile."
-        
-        _, _, _, rr_str, _ = _calc_rr(entry, stop_loss, target, is_short=True)
-        upside_str = f"+{((entry - target) / entry) * 100:.2f}%"
+        if daily_200_sma and entry > daily_200_sma:
+            reason = "FILTERED (MTF): Price is above Daily 200 SMA. Ignoring macro-fighting breakdown."
+        else:
+            rec = "SHORT MOMENTUM"
+            signal = "Volume Breakdown"
+            score = 95
+            stop_loss = entry + (2.0 * atr)
+            target = entry - (2.0 * atr)
+            reason = "STRATEGY B (MOMENTUM): Volume breakdown in a macro downtrend."
+            _, _, _, rr_str, _ = _calc_rr(entry, stop_loss, target, is_short=True)
+            upside_str = f"+{((entry - target) / entry) * 100:.2f}%"
 
     return {
         "ticker": ticker,
@@ -150,6 +201,6 @@ def analyze_asset(ticker, df_1d, df_1h, df_15m, spy_data=None):
 
 def analyze_crypto_asset(ticker, df_1d, df_1h, df_15m, btc_1d=None):
     """
-    Applies identical V8.0 Hybrid Engine to Crypto.
+    Applies identical V10.0 Apex Engine to Crypto.
     """
     return analyze_asset(ticker, df_1d, df_1h, df_15m)
