@@ -52,10 +52,13 @@ def run_scan():
                 
             res = analyze_asset(ticker, d1d, d1h, None) # df_15m is None for now as it's not used in V7
             
-            if res and res["recommendation"] in ["LONG SNIPER", "SHORT SNIPER"]:
+            if res and res["recommendation"] in ["LONG SNIPER", "SHORT SNIPER", "LONG MOMENTUM", "SHORT MOMENTUM"]:
                 price = d1h['Close'].iloc[-1]
                 
-                msg = f"🚨 <b>{res['recommendation']}</b> 🚨\n\n"
+                # Use different emoji for momentum
+                emoji = "🚀" if "MOMENTUM" in res["recommendation"] else "🚨"
+                
+                msg = f"{emoji} <b>{res['recommendation']}</b> {emoji}\n\n"
                 msg += f"<b>Asset:</b> {ticker}\n"
                 msg += f"<b>Price:</b> ${price:.2f}\n"
                 msg += f"<b>RSI-14:</b> {res['rsi']}\n"

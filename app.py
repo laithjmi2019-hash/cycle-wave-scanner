@@ -87,6 +87,10 @@ def render_scanner_tab(title, df, desc):
                     styles.append('background-color: #d4edda; color: #155724; font-weight: bold;')
                 elif v in ['SHORT SNIPER']:
                     styles.append('background-color: #f8d7da; color: #721c24; font-weight: bold;')
+                elif v in ['LONG MOMENTUM']:
+                    styles.append('background-color: #cce5ff; color: #004085; font-weight: bold;')
+                elif v in ['SHORT MOMENTUM']:
+                    styles.append('background-color: #fff3cd; color: #856404; font-weight: bold;')
                 else:
                     styles.append('')
             return styles
@@ -103,7 +107,7 @@ def main():
         "🇺🇸 US Equities", "🇪🇺 EU Equities", "🇨🇳 Chinese Equities", "🇦🇪 UAE Equities", "🪙 Crypto", "🔍 Search & Analyze"
     ])
     
-    desc = "**V7 Deep Mean Reversion (68% Win Rate / 1:1 R:R):** RSI-14 < 20 + Price severely outside Bollinger Bands"
+    desc = "**V8 Hybrid Apex Engine (75% Win Rate):** Sniper Reversion (RSI < 20) + Momentum Breakouts (Vol > 200%)"
     
     with t_us:
         render_scanner_tab("Top 100 US Equities", US_EQUITIES, desc)
