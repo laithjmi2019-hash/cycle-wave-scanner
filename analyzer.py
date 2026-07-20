@@ -39,7 +39,7 @@ def _calc_rr(entry, stop, target, is_short=False):
     rr_str = f"1:{ratio:.2f}"
     return ratio, risk, reward, rr_str, "N/A"
 
-def analyze_asset(df_1d, df_1h):
+def analyze_asset(ticker, df_1d, df_1h, df_15m, spy_data=None):
     """
     V7.0 Deep Mean Reversion (Combo 6):
     Looks for Extreme Panic (RSI < 20) + Price extremely detached from Lower BB (Close < LowerBB - 0.5*ATR).
@@ -110,8 +110,8 @@ def analyze_asset(df_1d, df_1h):
         "bb_status": bb_status
     }
 
-def analyze_crypto_asset(df_1d, df_1h, btc_1d=None):
+def analyze_crypto_asset(ticker, df_1d, df_1h, df_15m, btc_1d=None):
     """
     Applies identical V7.0 Deep Mean Reversion to Crypto.
     """
-    return analyze_asset(df_1d, df_1h)
+    return analyze_asset(ticker, df_1d, df_1h, df_15m)
