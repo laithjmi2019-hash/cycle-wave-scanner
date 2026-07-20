@@ -127,7 +127,7 @@ def analyze_asset(ticker, df_1d, df_1h, df_15m, spy_data=None):
     # ====================================================
     # STRATEGY A: THE SNIPER (DEEP MEAN REVERSION)
     # ====================================================
-    if rsi < 20 and entry < (bb_lower - (0.5 * atr)):
+    if rsi < 30 and entry <= bb_lower:
         if daily_200_sma and entry < daily_200_sma:
             reason = "FILTERED (MTF): Price is below Daily 200 SMA. Refusing to catch falling knife."
         elif check_toxic_news(ticker):
@@ -138,11 +138,11 @@ def analyze_asset(ticker, df_1d, df_1h, df_15m, spy_data=None):
             score = 99
             stop_loss = entry - (2.0 * atr)
             target = entry + (2.0 * atr)
-            reason = "STRATEGY A (SNIPER): Extreme panic (RSI < 20) in a macro uptrend (Price > 200 SMA)."
+            reason = "STRATEGY A (SNIPER): High panic (RSI < 30) in a macro uptrend (Price > 200 SMA)."
             _, _, _, rr_str, _ = _calc_rr(entry, stop_loss, target, is_short=False)
             upside_str = f"+{((target - entry) / entry) * 100:.2f}%"
 
-    elif rsi > 80 and entry > (bb_upper + (0.5 * atr)):
+    elif rsi > 70 and entry >= bb_upper:
         if daily_200_sma and entry > daily_200_sma:
             reason = "FILTERED (MTF): Price is above Daily 200 SMA. Refusing to step in front of bull train."
         else:
@@ -151,14 +151,14 @@ def analyze_asset(ticker, df_1d, df_1h, df_15m, spy_data=None):
             score = 99
             stop_loss = entry + (2.0 * atr)
             target = entry - (2.0 * atr)
-            reason = "STRATEGY A (SNIPER): Extreme euphoria (RSI > 80) in a macro downtrend."
+            reason = "STRATEGY A (SNIPER): High euphoria (RSI > 70) in a macro downtrend."
             _, _, _, rr_str, _ = _calc_rr(entry, stop_loss, target, is_short=True)
             upside_str = f"+{((entry - target) / entry) * 100:.2f}%"
 
     # ====================================================
     # STRATEGY B: MOMENTUM BREAKOUT
     # ====================================================
-    elif entry > bb_upper and vol > (vol_sma * 2.0) and macd_h > 0 and macd_h_prev < 0:
+    elif entry > bb_upper and vol > (vol_sma * 1.5) and macd_h > 0 and macd_h_prev <= 0:
         if daily_200_sma and entry < daily_200_sma:
             reason = "FILTERED (MTF): Price is below Daily 200 SMA. Ignoring dead-cat bounce."
         elif check_toxic_news(ticker):
@@ -173,7 +173,7 @@ def analyze_asset(ticker, df_1d, df_1h, df_15m, spy_data=None):
             _, _, _, rr_str, _ = _calc_rr(entry, stop_loss, target, is_short=False)
             upside_str = f"+{((target - entry) / entry) * 100:.2f}%"
         
-    elif entry < bb_lower and vol > (vol_sma * 2.0) and macd_h < 0 and macd_h_prev > 0:
+    elif entry < bb_lower and vol > (vol_sma * 1.5) and macd_h < 0 and macd_h_prev >= 0:
         if daily_200_sma and entry > daily_200_sma:
             reason = "FILTERED (MTF): Price is above Daily 200 SMA. Ignoring macro-fighting breakdown."
         else:
