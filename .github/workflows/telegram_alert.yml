@@ -2,8 +2,8 @@ name: V7 Sniper Hourly Scan
 
 on:
   schedule:
-    # Run every 20 minutes
-    - cron: '*/20 * * * *'
+    # Run once per hour at 20 minutes past the hour (bypasses Yahoo delay)
+    - cron: '20 * * * *'
   workflow_dispatch:
     # Allow manual triggering from the GitHub Actions tab
 
