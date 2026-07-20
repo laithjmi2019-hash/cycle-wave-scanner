@@ -50,7 +50,7 @@ def run_scan():
             if d1d.empty or d1h.empty:
                 continue
                 
-            res = analyze_asset(ticker, d1d, d1h, None) # df_15m is None for now as it's not used in V7
+            res = analyze_asset(ticker, d1d, d1h, None) # df_15m is None for now as it's not used in V10
             
             if res and res["recommendation"] in ["LONG SNIPER", "SHORT SNIPER", "LONG MOMENTUM", "SHORT MOMENTUM"]:
                 price = d1h['Close'].iloc[-1]
