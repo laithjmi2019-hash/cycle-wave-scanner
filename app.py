@@ -101,13 +101,13 @@ def render_scanner_tab(title, df, desc):
         st.warning("No data returned.")
 
 def main():
-    st.title("🌊 Cycle & Wave Scanner V10.1 (Apex Relaxed)")
+    st.title("Cycle & Wave Scanner V11.0 (Apex Multi-Factor Engine)")
     
     t_us, t_eu, t_cn, t_uae, t_cr, t_search = st.tabs([
         "🇺🇸 US Equities", "🇪🇺 EU Equities", "🇨🇳 Chinese Equities", "🇦🇪 UAE Equities", "🪙 Crypto", "🔍 Search & Analyze"
     ])
     
-    desc = "**V10.1 Apex Engine (Relaxed MTF): High Panic (RSI < 30) + Momentum Breakouts (Vol > 150%)**"
+    desc = "**V11 Apex Engine:** ADX Regime Detection + RSI<30 + Z-Score<-1.5 + VWAP + 1:2 R:R (Backtest-Proven)"
     
     with t_us:
         render_scanner_tab("Top 100 US Equities", US_EQUITIES, desc)
