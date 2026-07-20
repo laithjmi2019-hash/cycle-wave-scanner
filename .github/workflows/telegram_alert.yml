@@ -2,8 +2,8 @@ name: V10 Apex Hourly Scan
 
 on:
   schedule:
-    # Run once per hour at 20 minutes past the hour (bypasses Yahoo delay)
-    - cron: '20 * * * *'
+    # Run every 20 minutes to ensure at least one succeeds per hour on GitHub's free tier
+    - cron: '*/20 * * * *'
   workflow_dispatch:
     # Allow manual triggering from the GitHub Actions tab
 
