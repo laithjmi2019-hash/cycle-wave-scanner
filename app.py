@@ -1,15 +1,18 @@
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
-from data_fetcher import get_market_data, get_crypto_data, fetch_ticker_data_sync
+from data_fetcher import (
+    get_regional_data, get_crypto_data, fetch_ticker_data_sync,
+    US_EQUITIES, EU_EQUITIES, CHINA_EQUITIES, UAE_EQUITIES, CRYPTO
+)
 from analyzer import analyze_asset, analyze_crypto_asset, calculate_indicators
 from mappings import TICKER_MAPPINGS
 
 st.set_page_config(page_title="Cycle & Wave Scanner", layout="wide")
 
-@st.cache_data(ttl=900)  # FIX 7: 15min cache matches intraday strategy (was 3600)
-def load_and_scan_market():
-    market_data = get_market_data()
+@st.cache_data(ttl=900)
+def load_and_scan_region(tickers):
+    market_data = get_regional_data(tickers)
     if "SPY" not in market_data:
         return pd.DataFrame(), market_data
         
@@ -27,7 +30,7 @@ def load_and_scan_market():
         df_res = df_res.sort_values(by="score", ascending=False).reset_index(drop=True)
     return df_res, market_data
 
-@st.cache_data(ttl=900) # Crypto is faster moving, 15 min cache
+@st.cache_data(ttl=900)
 def load_and_scan_crypto():
     market_data = get_crypto_data()
     if "BTC-USD" not in market_data:
@@ -39,7 +42,6 @@ def load_and_scan_crypto():
     for ticker, data in market_data.items():
         if ticker == "BTC-USD":
             continue
-        # MTF Logic: Pass 1d, 1h, and 15m. BTC acts as macro.
         res = analyze_crypto_asset(ticker, data["1d"], data["1h"], data["15m"], btc_data)
         results.append(res)
         
@@ -50,80 +52,73 @@ def load_and_scan_crypto():
 
 def plot_chart(df: pd.DataFrame, ticker: str, timeframe: str):
     fig = go.Figure()
-    
     fig.add_trace(go.Candlestick(x=df.index,
                 open=df['Open'], high=df['High'],
                 low=df['Low'], close=df['Close'],
                 name='Price'))
                 
-    # Add active FVG zones if requested (simplified as just lines here, or skip for performance)
-    if 'active_bull_fvg_top' in df.columns:
-        fig.add_trace(go.Scatter(x=df.index, y=df['active_bull_fvg_top'], line=dict(color='green', dash='dot'), name='FVG Top'))
-        fig.add_trace(go.Scatter(x=df.index, y=df['active_bull_fvg_bottom'], line=dict(color='green', dash='dot'), name='FVG Bottom'))
-        
     fig.update_layout(title=f"{ticker} {timeframe} Institutional Chart", xaxis_rangeslider_visible=False, height=500, template="plotly_dark")
     return fig
 
-def main():
-    st.title("🌊 Institutional Cycle & Wave Scanner (SMC Edition)")
+def render_scanner_tab(title, df, desc):
+    st.header(title)
+    st.markdown(desc)
     
-    tab1, tab2, tab3 = st.tabs(["Top 100 Scanner", "Search & Analyze", "Top 25 Crypto Scanner"])
-    
-    # Highlighting: STRONG BUY (green) | STRONG SHORT (red)
-    def highlight_signals(s):
-        styles = []
-        for v in s:
-            if v in ['LONG SNIPER']:
-                styles.append('background-color: #d4edda; color: #155724; font-weight: bold;')
-            elif v in ['SHORT SNIPER']:
-                styles.append('background-color: #f8d7da; color: #721c24; font-weight: bold;')
-            else:
-                styles.append('')
-        return styles
-            
-    with tab1:
-        st.header("Top 100 US Equities Scanner")
-        st.markdown("**V7 Deep Mean Reversion (73% Win Rate / 1:1 R:R):** RSI-14 < 20 + Price severely outside Bollinger Bands")
-        
-        if st.button("🔄 Force Fresh Market Scan"):
-            load_and_scan_market.clear()
-            
-        with st.spinner("Fetching data asynchronously (Zero Lookahead)..."):
-            scan_df, market_data = load_and_scan_market()
-            
-        if not scan_df.empty:
-            cols_to_show = ['ticker','recommendation','signal','score','upside','stop_loss',
-                            'rsi','bb_status','reason']
-            cols_to_show = [c for c in cols_to_show if c in scan_df.columns]
-            styled_df = scan_df[cols_to_show].style.apply(highlight_signals, subset=['signal','recommendation'])
-            st.dataframe(styled_df, use_container_width=True)
-        else:
-            st.warning("No data returned.")
-            
-    with tab3:
-        st.header("Top 25 Crypto Scanner")
-        st.markdown("**V7 Deep Mean Reversion (73% Win Rate / 1:1 R:R):** RSI-14 < 20 + Price severely outside Bollinger Bands")
-        st.info("💡 **Institutional Logic:** Sniper entries demand extreme patience. 1:1 Risk/Reward minimizes psychological stress.")
-        
-        if st.button("🔄 Force Fresh Crypto Scan"):
+    if st.button(f"🔄 Force Fresh Scan ({title})", key=title):
+        if "Crypto" in title:
             load_and_scan_crypto.clear()
-            
-        with st.spinner("Fetching data asynchronously (Zero Lookahead)..."):
-            crypto_df, crypto_data = load_and_scan_crypto()
-            
-        if not crypto_df.empty:
-            cols_to_show = ['ticker','recommendation','signal','score','upside','stop_loss',
-                            'rsi','bb_status','reason']
-            cols_to_show = [c for c in cols_to_show if c in crypto_df.columns]
-            styled_crypto_df = crypto_df[cols_to_show].style.apply(highlight_signals, subset=['signal','recommendation'])
-            st.dataframe(styled_crypto_df, use_container_width=True)
         else:
-            st.warning("No data returned.")
+            load_and_scan_region.clear()
+            
+    with st.spinner("Fetching data asynchronously..."):
+        if "Crypto" in title:
+            scan_df, _ = load_and_scan_crypto()
+        else:
+            scan_df, _ = load_and_scan_region(tuple(df)) # Tuple for caching
+            
+    if not scan_df.empty:
+        cols_to_show = ['ticker','recommendation','signal','score','upside','stop_loss','rsi','bb_status','reason']
+        cols_to_show = [c for c in cols_to_show if c in scan_df.columns]
+        
+        def highlight_signals(s):
+            styles = []
+            for v in s:
+                if v in ['LONG SNIPER']:
+                    styles.append('background-color: #d4edda; color: #155724; font-weight: bold;')
+                elif v in ['SHORT SNIPER']:
+                    styles.append('background-color: #f8d7da; color: #721c24; font-weight: bold;')
+                else:
+                    styles.append('')
+            return styles
+            
+        styled_df = scan_df[cols_to_show].style.apply(highlight_signals, subset=['signal','recommendation'])
+        st.dataframe(styled_df, use_container_width=True)
+    else:
+        st.warning("No data returned.")
 
-    with tab2:
+def main():
+    st.title("🌊 Institutional Cycle & Wave Scanner (Global SMC Edition)")
+    
+    t_us, t_eu, t_cn, t_uae, t_cr, t_search = st.tabs([
+        "🇺🇸 US Equities", "🇪🇺 EU Equities", "🇨🇳 Chinese Equities", "🇦🇪 UAE Equities", "🪙 Crypto", "🔍 Search & Analyze"
+    ])
+    
+    desc = "**V7 Deep Mean Reversion (68% Win Rate / 1:1 R:R):** RSI-14 < 20 + Price severely outside Bollinger Bands"
+    
+    with t_us:
+        render_scanner_tab("Top 100 US Equities", US_EQUITIES, desc)
+    with t_eu:
+        render_scanner_tab("Top 75 EU Equities", EU_EQUITIES, desc)
+    with t_cn:
+        render_scanner_tab("Top 25 Chinese Equities", CHINA_EQUITIES, desc)
+    with t_uae:
+        render_scanner_tab("Top 25 UAE Equities", UAE_EQUITIES, desc)
+    with t_cr:
+        render_scanner_tab("Top 25 Crypto", CRYPTO, desc)
+
+    with t_search:
         st.header("Search Individual Ticker")
         
-        # Smart Autocomplete
         options = list(TICKER_MAPPINGS.keys()) + ["Other (Custom Ticker)"]
         selected_option = st.selectbox(
             "Search Company, Crypto, or Ticker (Type to filter):", 
@@ -140,7 +135,6 @@ def main():
             
         analyze_clicked = st.button("Analyze")
         
-        # Session state for auto-run and persistence
         if "last_ticker" not in st.session_state:
             st.session_state.last_ticker = None
             
@@ -152,11 +146,8 @@ def main():
                 is_crypto = search_ticker.endswith("-USD")
                 t, d1d, d1h, d15m = fetch_ticker_data_sync(search_ticker, fetch_15m=True)
                 
-                if 'market_data' in locals() and "SPY" in market_data:
-                    spy_1d = market_data["SPY"]["1d"]
-                else:
-                    _, spy_1d, _, _ = fetch_ticker_data_sync("SPY", fetch_15m=False)
-                    
+                _, spy_1d, _, _ = fetch_ticker_data_sync("SPY", fetch_15m=False)
+                
                 btc_1d = None
                 if is_crypto:
                     _, btc_1d, _, _ = fetch_ticker_data_sync("BTC-USD", fetch_15m=False)
@@ -172,30 +163,26 @@ def main():
                     df_1h_ind = calculate_indicators(d1h)
                     st.session_state.tab2_result = (header, res, df_1h_ind)
                 else:
-                    st.error("Failed to fetch data for ticker. Ensure it's a valid Yahoo Finance ticker (e.g., TSLA, BTC-USD).")
+                    st.error("Failed to fetch data for ticker. Ensure it's a valid Yahoo Finance ticker.")
                     if "tab2_result" in st.session_state:
                         del st.session_state.tab2_result
 
-        # Render the result if it exists and matches the current ticker
         if "tab2_result" in st.session_state and search_ticker == st.session_state.last_ticker and search_ticker:
             header, res, df_1h_ind = st.session_state.tab2_result
             st.subheader(header)
             
-            # Row 1: Core Action Metrics
             col1, col2, col3 = st.columns(3)
             col1.metric("Recommendation", res["recommendation"])
             col2.metric("Signal", res["signal"])
             col3.metric("Conviction Score", f"{res['score']}%")
             
             st.markdown("---")
-            # Row 2: Trade Parameters
             col4, col5, col6, col7 = st.columns(4)
             col4.metric("Predicted Move", res.get("upside", "N/A"))
             col5.metric("Stop Loss", res.get("stop_loss", "N/A"))
             col6.metric("Risk/Reward", res.get("rr", "N/A"))
             
             st.markdown("---")
-            # Row 3: Scalp Data
             col8, col9 = st.columns(2)
             col8.metric("RSI-14 Extreme", res.get("rsi", "N/A"))
             col9.metric("Bollinger Extremes", res.get("bb_status", "N/A"))

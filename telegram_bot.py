@@ -13,17 +13,12 @@ except ImportError:
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from analyzer import analyze_asset
+from data_fetcher import US_EQUITIES, EU_EQUITIES, CHINA_EQUITIES, UAE_EQUITIES, CRYPTO
 
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 
-EQUITIES = [
-    "AAPL", "MSFT", "NVDA", "AMZN", "META", "GOOGL", "AMD", "TSLA",
-    "NFLX", "JPM", "V", "JNJ", "WMT", "PG", "MA", "HD", "CVX", "MRK",
-    "KO", "PEP", "AVGO", "COST", "MCD", "CSCO", "CRM", "INTC", "QCOM", "TXN"
-]
-CRYPTO = ["BTC-USD", "ETH-USD", "SOL-USD", "XRP-USD"]
-TICKERS = EQUITIES + CRYPTO
+TICKERS = US_EQUITIES + EU_EQUITIES + CHINA_EQUITIES + UAE_EQUITIES + CRYPTO
 
 def send_telegram_message(text):
     if not TELEGRAM_TOKEN or not CHAT_ID:
@@ -43,7 +38,7 @@ def send_telegram_message(text):
         print(f"Error sending message: {e}")
 
 def run_scan():
-    print(f"Starting V7.0 Sniper Scan at {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"Starting V7.0 Global Sniper Scan at {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     signals_found = []
     
     for ticker in TICKERS:
@@ -83,6 +78,6 @@ def run_scan():
 
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "--test":
-        send_telegram_message("✅ <b>Cycle & Wave Scanner V7.0</b>\n\nYour automated background scanner has successfully connected to Telegram. You will now receive instant alerts whenever the Sniper Engine finds an opportunity!")
+        send_telegram_message("✅ <b>Cycle & Wave Scanner V7.0 (Global Edition)</b>\n\nYour automated background scanner has successfully connected to Telegram and is now tracking 245 global assets (US, EU, China, UAE, Crypto).")
     else:
         run_scan()
