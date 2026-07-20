@@ -136,6 +136,7 @@ def analyze_asset(ticker, df_1d, df_1h, df_15m, spy_data=None):
         upside_str = f"+{((entry - target) / entry) * 100:.2f}%"
 
     return {
+        "ticker": ticker,
         "recommendation": rec,
         "signal": signal,
         "score": score,
