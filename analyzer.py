@@ -143,15 +143,20 @@ def analyze_asset(ticker, df_1d, df_1h, df_15m, spy_data=None):
             upside_str = f"+{((target - entry) / entry) * 100:.2f}%"
 
     elif rsi > 70 and entry >= bb_upper:
-        if daily_200_sma and entry > daily_200_sma:
-            reason = "FILTERED (MTF): Price is above Daily 200 SMA. Refusing to step in front of bull train."
+        # For SHORT: we SHORT when the stock is overbought.
+        # We BLOCK the short only if the macro trend is strongly bearish (price far below 200 SMA)
+        # We ALLOW shorts when price is above or near 200 SMA (overbought in any trend = good short)
+        if daily_200_sma and entry < (daily_200_sma * 0.85):
+            reason = "FILTERED (MTF): Price is massively below 200 SMA - already in freefall, too risky to short."
+        elif check_toxic_news(ticker):
+            reason = "FILTERED (NLP): Toxic news keywords detected. Blocking trade."
         else:
             rec = "SHORT SNIPER"
             signal = "Deep Reversion"
             score = 99
             stop_loss = entry + (2.0 * atr)
             target = entry - (2.0 * atr)
-            reason = "STRATEGY A (SNIPER): High euphoria (RSI > 70) in a macro downtrend."
+            reason = "STRATEGY A (SNIPER): High euphoria (RSI > 70) - overbought reversal setup."
             _, _, _, rr_str, _ = _calc_rr(entry, stop_loss, target, is_short=True)
             upside_str = f"+{((entry - target) / entry) * 100:.2f}%"
 
@@ -174,15 +179,15 @@ def analyze_asset(ticker, df_1d, df_1h, df_15m, spy_data=None):
             upside_str = f"+{((target - entry) / entry) * 100:.2f}%"
         
     elif entry < bb_lower and vol > (vol_sma * 1.5) and macd_h < 0 and macd_h_prev >= 0:
-        if daily_200_sma and entry > daily_200_sma:
-            reason = "FILTERED (MTF): Price is above Daily 200 SMA. Ignoring macro-fighting breakdown."
+        if check_toxic_news(ticker):
+            reason = "FILTERED (NLP): Toxic news keywords detected. Blocking trade."
         else:
             rec = "SHORT MOMENTUM"
             signal = "Volume Breakdown"
             score = 95
             stop_loss = entry + (2.0 * atr)
             target = entry - (2.0 * atr)
-            reason = "STRATEGY B (MOMENTUM): Volume breakdown in a macro downtrend."
+            reason = "STRATEGY B (MOMENTUM): Volume breakdown confirmed with high volume."
             _, _, _, rr_str, _ = _calc_rr(entry, stop_loss, target, is_short=True)
             upside_str = f"+{((entry - target) / entry) * 100:.2f}%"
 
