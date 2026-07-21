@@ -284,6 +284,60 @@ def analyze_asset(ticker, df_1d, df_1h, df_15m, spy_data=None):
                 f"Vol={vol_ratio:.1f}x avg, MACD crossed negative"
             )
 
+    # ================================================================
+    # WATCHLIST NEAR-MISS DETECTION
+    # Only fires when asset is VERY CLOSE to a full signal.
+    # All 3 conditions must be partially met simultaneously (tight thresholds).
+    # ================================================================
+    watch_alert = None
+    if rec == "WAIT":
+        # LONG WATCH: RSI within 3pts of trigger, Z within 0.3 of trigger,
+        # price within 1% of lower BB, ADX confirms ranging market
+        near_long_rsi  = rsi < 33          # within 3 points of RSI<30 trigger
+        near_long_z    = zscore < -1.2     # within 0.3 of Z<-1.5 trigger
+        near_long_bb   = entry <= (bb_lower * 1.01)  # within 1% of lower band
+        near_long_adx  = adx < 27          # must be clearly ranging
+
+        # ALL 3 must be close — prevents low-quality alerts
+        if near_long_adx and near_long_rsi and near_long_z and near_long_bb:
+            missing = []
+            if not (rsi < 30):      missing.append(f"RSI={rsi:.1f} (needs <30)")
+            if not (zscore < -1.5): missing.append(f"Z={zscore:.2f} (needs <-1.5)")
+            if not (entry <= bb_lower): missing.append("Price must touch Lower BB")
+
+            watch_alert = {
+                "type":    "WATCH LONG",
+                "missing": " | ".join(missing) if missing else "All conditions nearly met",
+                "rsi":     f"{rsi:.1f}",
+                "zscore":  f"{zscore:.2f}",
+                "adx":     f"{adx:.1f}",
+                "regime":  "RANGING",
+                "conditions_met": sum([near_long_rsi, near_long_z, near_long_bb]),
+            }
+
+        # SHORT WATCH: RSI within 3pts of trigger, Z within 0.3 of trigger,
+        # price within 1% of upper BB, ADX confirms ranging market
+        near_short_rsi  = rsi > 67         # within 3 points of RSI>70 trigger
+        near_short_z    = zscore > 1.2     # within 0.3 of Z>+1.5 trigger
+        near_short_bb   = entry >= (bb_upper * 0.99)  # within 1% of upper band
+        near_short_adx  = adx < 27
+
+        if near_short_adx and near_short_rsi and near_short_z and near_short_bb:
+            missing = []
+            if not (rsi > 70):      missing.append(f"RSI={rsi:.1f} (needs >70)")
+            if not (zscore > 1.5):  missing.append(f"Z={zscore:.2f} (needs >+1.5)")
+            if not (entry >= bb_upper): missing.append("Price must touch Upper BB")
+
+            watch_alert = {
+                "type":    "WATCH SHORT",
+                "missing": " | ".join(missing) if missing else "All conditions nearly met",
+                "rsi":     f"{rsi:.1f}",
+                "zscore":  f"{zscore:.2f}",
+                "adx":     f"{adx:.1f}",
+                "regime":  "RANGING",
+                "conditions_met": sum([near_short_rsi, near_short_z, near_short_bb]),
+            }
+
     return {
         "ticker":         ticker,
         "recommendation": rec,
@@ -298,6 +352,7 @@ def analyze_asset(ticker, df_1d, df_1h, df_15m, spy_data=None):
         "adx":            f"{adx:.1f}",
         "zscore":         f"{zscore:.2f}",
         "bb_status":      bb_status,
+        "watch_alert":    watch_alert,
     }
 
 def analyze_crypto_asset(ticker, df_1d, df_1h, df_15m, btc_1d=None):

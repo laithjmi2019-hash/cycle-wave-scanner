@@ -81,12 +81,16 @@ def send_message(text):
 # ============================================================
 # SCAN ONE TICKER
 # ============================================================
+WATCH_COOLDOWN_HRS = 6  # Don't re-alert the same watchlist item within 6 hours
+
+# ============================================================
+# SCAN ONE TICKER
+# ============================================================
 def process_ticker(ticker):
-    # Market hours filter — skip if market is closed
+    """Fetch data and analyze a single ticker."""
     market = ASSET_MARKET_MAP.get(ticker, "US")
     if not market_is_open(market):
         return None
-
     try:
         t   = yf.Ticker(ticker)
         d1d = t.history(period="1y",  interval="1d", prepost=False)
@@ -94,28 +98,21 @@ def process_ticker(ticker):
         if d1d.empty or d1h.empty:
             return None
         res = analyze_asset(ticker, d1d, d1h, None)
-        if res and res["recommendation"] in ["LONG SNIPER", "SHORT SNIPER", "LONG MOMENTUM", "SHORT MOMENTUM"]:
+        if res:
             res["price"] = d1h['Close'].iloc[-1]
-            return res
+        return res
     except Exception as e:
         print(f"Error {ticker}: {e}")
     return None
 
 # ============================================================
-# BUILD TELEGRAM MESSAGE
+# BUILD TELEGRAM MESSAGES
 # ============================================================
-def build_message(res):
+def build_signal_message(res):
     rec   = res["recommendation"]
     stars = STAR_MAP.get(res.get("stars", "STAR_2"), "[**] DEVELOPING")
-
-    if "MOMENTUM" in rec:
-        emoji = "MOMENTUM BREAKOUT"
-    elif "LONG" in rec:
-        emoji = "LONG SNIPER"
-    else:
-        emoji = "SHORT SNIPER"
-
-    msg  = f"<b>{emoji}</b>\n"
+    label = "MOMENTUM BREAKOUT" if "MOMENTUM" in rec else rec
+    msg  = f"<b>{label}</b>\n"
     msg += f"{stars}\n\n"
     msg += f"<b>Asset:</b> {res['ticker']}\n"
     msg += f"<b>Price:</b> ${res['price']:.2f}\n"
@@ -128,6 +125,21 @@ def build_message(res):
     msg += f"<i>{res['reason']}</i>"
     return msg
 
+def build_watch_message(ticker, price, watch):
+    direction = "LONG (BUY)" if "LONG" in watch["type"] else "SHORT (SELL)"
+    emoji = "WATCH - Approaching LONG" if "LONG" in watch["type"] else "WATCH - Approaching SHORT"
+    msg  = f"<b>[WATCHLIST] {emoji}</b>\n\n"
+    msg += f"<b>Asset:</b> {ticker}\n"
+    msg += f"<b>Price:</b> ${price:.4f}\n"
+    msg += f"<b>Direction:</b> {direction}\n"
+    msg += f"<b>RSI-14:</b> {watch['rsi']}\n"
+    msg += f"<b>ADX:</b> {watch['adx']} ({watch['regime']})\n"
+    msg += f"<b>Z-Score:</b> {watch['zscore']}\n"
+    msg += f"<b>Conditions Met:</b> {watch['conditions_met']}/3\n\n"
+    msg += f"<b>Still Needed:</b>\n<i>{watch['missing']}</i>\n\n"
+    msg += "<i>This is a WATCHLIST alert. Not a confirmed trade signal yet. Monitor closely.</i>"
+    return msg
+
 # ============================================================
 # MAIN SCAN
 # ============================================================
@@ -136,39 +148,61 @@ def run_scan():
     print(f"V11 Scan started at {ts}")
 
     cache = load_cache()
-    new_signals = []
+    new_signals  = []
+    new_watchlist = []
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=20) as ex:
         for res in ex.map(process_ticker, ALL_TICKERS):
             if res is None:
                 continue
-            key = f"{res['ticker']}_{res['recommendation']}"
-            if is_duplicate(key, cache, SIGNAL_COOLDOWN_HRS):
-                print(f"Duplicate skipped: {res['ticker']}")
-                continue
-            msg = build_message(res)
-            send_message(msg)
-            mark_sent(key, cache)
-            new_signals.append(res['ticker'])
-            print(f"Signal sent: {res['ticker']} {res['recommendation']} {res.get('stars','')}")
+
+            ticker = res["ticker"]
+            price  = res.get("price", 0)
+            rec    = res["recommendation"]
+
+            # --- Full Confirmed Signals ---
+            if rec in ["LONG SNIPER", "SHORT SNIPER", "LONG MOMENTUM", "SHORT MOMENTUM"]:
+                key = f"{ticker}_{rec}"
+                if is_duplicate(key, cache, SIGNAL_COOLDOWN_HRS):
+                    print(f"Duplicate signal skipped: {ticker}")
+                    continue
+                msg = build_signal_message(res)
+                send_message(msg)
+                mark_sent(key, cache)
+                new_signals.append(ticker)
+                print(f"Signal sent: {ticker} {rec}")
+
+            # --- Watchlist Near-Miss Alerts ---
+            elif res.get("watch_alert"):
+                watch = res["watch_alert"]
+                watch_key = f"{ticker}_watch_{watch['type']}"
+                if is_duplicate(watch_key, cache, WATCH_COOLDOWN_HRS):
+                    print(f"Duplicate watch skipped: {ticker}")
+                    continue
+                msg = build_watch_message(ticker, price, watch)
+                send_message(msg)
+                mark_sent(watch_key, cache)
+                new_watchlist.append(ticker)
+                print(f"Watch alert sent: {ticker} {watch['type']}")
 
     save_cache(cache)
 
-    # Heartbeat — only once per 4 hours if no signals
-    if not new_signals:
+    # Heartbeat — only once per 4 hours if nothing was sent at all
+    if not new_signals and not new_watchlist:
         hb_key = "heartbeat_heartbeat"
         if not is_duplicate(hb_key, cache, HEARTBEAT_COOLDOWN_HRS):
             send_message(
                 "<b>Scan Complete (V11 Apex)</b>\n\n"
-                "No new signals found. Monitoring 245+ global assets "
+                "No new signals or watchlist alerts. Monitoring 245+ global assets "
                 "every 15 minutes across US, EU, China, UAE, and Crypto.\n\n"
-                "<i>The system only fires when all confluence layers align.</i>"
+                "<i>The system fires signals when all conditions align, "
+                "and watchlist alerts when assets are getting close.</i>"
             )
             mark_sent(hb_key, cache)
             save_cache(cache)
             print("Heartbeat sent.")
         else:
-            print("Scan complete. No new signals. Heartbeat already sent recently.")
+            print("No new activity. Heartbeat already sent recently.")
 
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "--test":
