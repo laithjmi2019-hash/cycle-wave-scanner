@@ -24,7 +24,6 @@ CHAT_ID              = os.environ.get("TELEGRAM_CHAT_ID")
 ALL_TICKERS          = US_EQUITIES + EU_EQUITIES + CHINA_EQUITIES + UAE_EQUITIES + CRYPTO
 SIGNAL_CACHE_FILE    = "/tmp/v11_signal_cache.json"
 SIGNAL_COOLDOWN_HRS  = 4
-HEARTBEAT_COOLDOWN_HRS = 4
 
 STAR_MAP = {
     "STAR_5": "[*****] ELITE",
@@ -149,21 +148,8 @@ def run_scan():
 
     save_cache(cache)
 
-    # Heartbeat — only once per 4 hours when no signals found
     if not new_signals:
-        hb_key = "heartbeat_heartbeat"
-        if not is_duplicate(hb_key, cache, HEARTBEAT_COOLDOWN_HRS):
-            send_message(
-                "<b>Scan Complete (V11 Apex)</b>\n\n"
-                "No confirmed signals at this time. Monitoring 226 global assets "
-                "every 15 minutes across US, EU, China, UAE, and Crypto.\n\n"
-                "<i>You will only be notified when all confluence conditions fully align.</i>"
-            )
-            mark_sent(hb_key, cache)
-            save_cache(cache)
-            print("Heartbeat sent.")
-        else:
-            print("No new signals. Heartbeat already sent recently.")
+        print("No confirmed signals this scan.")
 
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "--test":
