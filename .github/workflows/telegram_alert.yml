@@ -1,11 +1,12 @@
-name: V10 Apex Hourly Scan
+name: V12 Institutional Grade Scanner
 
 on:
   schedule:
-    # Run every 20 minutes to ensure at least one succeeds per hour on GitHub's free tier
     - cron: '*/20 * * * *'
   workflow_dispatch:
-    # Allow manual triggering from the GitHub Actions tab
+
+permissions:
+  contents: write   # Required: signal_tracker writes signal_log.json to repo
 
 jobs:
   run-scanner:
@@ -13,20 +14,21 @@ jobs:
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
-        
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-          
+
       - name: Install Dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          
-      - name: Run Telegram Bot Scanner
+
+      - name: Run V12 Scanner
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
+          GITHUB_TOKEN:       ${{ secrets.GITHUB_TOKEN }}
         run: |
           python telegram_bot.py
