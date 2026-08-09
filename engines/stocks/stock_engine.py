@@ -16,6 +16,8 @@ from engines.stocks.catalyst import get_catalyst_score, has_earnings_soon
 from engines.stocks.strategies.mean_reversion import evaluate as eval_mr
 from engines.stocks.strategies.momentum_breakout import evaluate as eval_mb
 from engines.stocks.strategies.pullback_continuation import evaluate as eval_pc
+from engines.stocks.strategies.short_breakdown import evaluate as eval_short_bd
+from engines.stocks.strategies.short_mean_reversion import evaluate as eval_short_mr
 
 def analyze_stock(ticker: str, df_1d: pd.DataFrame, df_1h: pd.DataFrame, df_15m: pd.DataFrame, regime_data: dict) -> dict:
     try:
@@ -24,8 +26,6 @@ def analyze_stock(ticker: str, df_1d: pd.DataFrame, df_1h: pd.DataFrame, df_15m:
             return None
             
         hard_veto = None
-        if regime_data.get('regime_class') == 'PANIC':
-            hard_veto = 'Regime is PANIC'
         if has_earnings_soon(ticker, config.EARNINGS_BLOCK_HOURS):
             hard_veto = 'Earnings soon'
             
@@ -38,8 +38,10 @@ def analyze_stock(ticker: str, df_1d: pd.DataFrame, df_1h: pd.DataFrame, df_15m:
         sig_mr = eval_mr(ticker, df_1d, df_1h, df_15m, regime_data, indicators)
         sig_mb = eval_mb(ticker, df_1d, df_1h, df_15m, regime_data, indicators)
         sig_pc = eval_pc(ticker, df_1d, df_1h, df_15m, regime_data, indicators)
+        sig_sbd = eval_short_bd(ticker, df_1d, df_1h, df_15m, regime_data, indicators)
+        sig_smr = eval_short_mr(ticker, df_1d, df_1h, df_15m, regime_data, indicators)
         
-        valid_sigs = [s for s in [sig_mr, sig_mb, sig_pc] if s is not None]
+        valid_sigs = [s for s in [sig_mr, sig_mb, sig_pc, sig_sbd, sig_smr] if s is not None]
         if not valid_sigs:
             return None
             
@@ -75,9 +77,10 @@ def analyze_stock(ticker: str, df_1d: pd.DataFrame, df_1h: pd.DataFrame, df_15m:
                 
         risk_mult = config.QUALITY_RISK_MULT.get(quality_class, 0.0)
         pos_size = 0.0
-        if risk_mult > 0 and (best_sig['entry'] - best_sig['stop']) > 0:
+        risk_per_unit = abs(best_sig['entry'] - best_sig['stop'])
+        if risk_mult > 0 and risk_per_unit > 0:
             risk_amt = config.ACCOUNT_SIZE_USD * config.BASE_RISK_PCT * risk_mult
-            pos_size = risk_amt / (best_sig['entry'] - best_sig['stop'])
+            pos_size = risk_amt / risk_per_unit
             
         return {
             'ticker': ticker,
