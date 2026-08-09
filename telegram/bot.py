@@ -52,7 +52,9 @@ def build_stock_message(signal: dict) -> str:
     lines = [
         f"{emoji} {prefix} {qc} | {direction} — {strat}",
         f"",
-        f"<b>Asset:</b> {ticker}  <b>Score:</b> {score}/100",
+        f"<b>Asset:</b> {ticker}",
+        f"<b>Confirmation Grade:</b> {qc}",
+        f"<b>Confidence Score:</b> {score}/100 ({score}%)",
         f"<b>Market:</b> {signal.get('market', '')}  <b>Sector:</b> {sector}",
         f"",
         f"<b>Entry:</b>  ${signal.get('entry', 0):.4f}",
@@ -100,7 +102,9 @@ def build_crypto_message(signal: dict) -> str:
     lines = [
         f"{emoji} {prefix} {qc} | {direction} — {strat}",
         f"",
-        f"<b>Asset:</b> {ticker}  <b>Score:</b> {score}/100",
+        f"<b>Asset:</b> {ticker}",
+        f"<b>Confirmation Grade:</b> {qc}",
+        f"<b>Confidence Score:</b> {score}/100 ({score}%)",
         f"<b>Narrative:</b> {signal.get('narrative', 'N/A')}",
         f"",
         f"<b>Entry:</b>  ${signal.get('entry', 0):.4f}",

@@ -22,7 +22,7 @@ SCORE_THRESHOLDS = {
     "C":   0,   # No trade — never alert
 }
 # Production default: only A and A+ go to Telegram
-B_PLUS_ALERTS_ENABLED = os.environ.get("B_PLUS_ALERTS", "false").lower() == "true"
+B_PLUS_ALERTS_ENABLED = os.environ.get("B_PLUS_ALERTS", "true").lower() == "true"
 MIN_ALERT_SCORE = SCORE_THRESHOLDS["A"]   # 68
 
 # ═══════════════════════════════════════════════════════════════════════
