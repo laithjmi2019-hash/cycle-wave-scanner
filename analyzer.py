@@ -13,6 +13,30 @@ TOXIC_KEYWORDS = [
     "sued", "default", "collapse", "chapter 11", "ponzi", "indicted"
 ]
 
+VIX_BLOCK_THRESHOLD = 25.0   # Block US mean-reversion LONGs when fear is elevated
+US_TICKERS_PATTERN  = ["-USD"]   # Crypto excluded from VIX filter
+
+# ============================================================
+# VIX REGIME CACHE (refreshed once per scan, shared across tickers)
+# ============================================================
+_vix_cache = {"value": None, "ts": None}
+
+def get_vix():
+    """Fetch current VIX. Cached for 30 minutes to avoid repeated API calls."""
+    global _vix_cache
+    now = datetime.datetime.now(datetime.timezone.utc)
+    if _vix_cache["ts"] and (now - _vix_cache["ts"]).seconds < 1800:
+        return _vix_cache["value"]
+    try:
+        vix_df = yf.Ticker("^VIX").history(period="2d", interval="1h")
+        if not vix_df.empty:
+            val = float(vix_df['Close'].iloc[-1])
+            _vix_cache = {"value": val, "ts": now}
+            return val
+    except Exception:
+        pass
+    return None
+
 def check_toxic_news(ticker):
     try:
         t    = yf.Ticker(ticker)
@@ -33,16 +57,12 @@ def check_toxic_news(ticker):
     return False
 
 def has_earnings_soon(ticker, hours=72):
-    """
-    Returns True if the ticker has earnings within `hours`.
-    Blocks signals near earnings — fundamental risk overrides technical.
-    """
+    """Returns True if earnings within `hours`. Block signals near earnings."""
     try:
         t   = yf.Ticker(ticker)
         cal = t.calendar
         if cal is None:
             return False
-        # yfinance returns calendar as a dict with 'Earnings Date' key
         dates = None
         if isinstance(cal, dict):
             dates = cal.get('Earnings Date') or cal.get('earnings_date')
@@ -57,7 +77,7 @@ def has_earnings_soon(ticker, hours=72):
                 ed  = pd.Timestamp(d)
                 now = pd.Timestamp.now(tz=ed.tzinfo if ed.tzinfo else None)
                 diff = (ed - now).total_seconds() / 3600
-                if -24 < diff < hours:   # within window (incl. day after)
+                if -24 < diff < hours:
                     return True
             except Exception:
                 continue
@@ -70,8 +90,8 @@ def has_earnings_soon(ticker, hours=72):
 # ============================================================
 def calc_vwap(df):
     """
-    Calculates true daily-reset VWAP on hourly data.
-    Formula: cumsum(TypicalPrice * Volume) / cumsum(Volume), reset each day.
+    True daily-reset VWAP: cumsum(TP * Vol) / cumsum(Vol), grouped by date.
+    TP = (High + Low + Close) / 3
     """
     df = df.copy()
     df.index = pd.to_datetime(df.index)
@@ -88,10 +108,7 @@ def calc_vwap(df):
 # ============================================================
 def confirm_on_15m(df_15m, direction):
     """
-    Validates the 1H signal direction on the 15M chart.
-    LONG: 15M RSI must be rising from below 40 (momentum turning up).
-    SHORT: 15M RSI must be falling from above 60 (momentum turning down).
-    Returns True (confirmed) or False (not yet aligned).
+    Validates signal direction on 15M chart.
     Falls back to True if 15M data unavailable — never blocks due to missing data.
     """
     try:
@@ -101,36 +118,64 @@ def confirm_on_15m(df_15m, direction):
         rsi_15 = ta.momentum.RSIIndicator(c, 14).rsi().dropna()
         if len(rsi_15) < 3:
             return True
-        r_now  = rsi_15.iloc[-1]
-        r_prev = rsi_15.iloc[-2]
-        r_prev2= rsi_15.iloc[-3]
-
+        r_now   = rsi_15.iloc[-1]
+        r_prev  = rsi_15.iloc[-2]
+        r_prev2 = rsi_15.iloc[-3]
         if direction == "LONG":
-            # RSI was oversold area and is now rising
-            return r_now > r_prev and r_prev <= r_prev2 and r_now < 50
-        else:  # SHORT
-            # RSI was overbought area and is now falling
-            return r_now < r_prev and r_prev >= r_prev2 and r_now > 50
+            return r_now > r_prev and r_prev <= r_prev2 and r_now < 55
+        else:
+            return r_now < r_prev and r_prev >= r_prev2 and r_now > 45
     except Exception:
         return True
+
+# ============================================================
+# RSI CROSS DETECTION
+# ============================================================
+def rsi_crossed_up(rsi_series, lookback=3):
+    """
+    Returns True if RSI was below 30 within `lookback` bars
+    AND is now back above 30 (confirmed bounce, not just touch).
+    """
+    current = rsi_series.iloc[-1]
+    if current < 30 or current > 42:   # must be in 30-42 zone (fresh cross)
+        return False
+    for i in range(1, lookback + 1):
+        if rsi_series.iloc[-1 - i] < 30:
+            return True
+    return False
+
+def rsi_crossed_down(rsi_series, lookback=3):
+    """
+    Returns True if RSI was above 70 within `lookback` bars
+    AND is now back below 70 (confirmed rollover, not just touch).
+    """
+    current = rsi_series.iloc[-1]
+    if current > 70 or current < 58:   # must be in 58-70 zone (fresh cross)
+        return False
+    for i in range(1, lookback + 1):
+        if rsi_series.iloc[-1 - i] > 70:
+            return True
+    return False
 
 # ============================================================
 # INDICATOR SUITE
 # ============================================================
 def calculate_indicators(df):
-    if len(df) < 30:
+    if len(df) < 50:
         return df
     c, h, l, v = df['Close'], df['High'], df['Low'], df['Volume']
 
-    df['rsi']     = ta.momentum.RSIIndicator(c, 14).rsi()
-    bb            = ta.volatility.BollingerBands(c, 20, 2.0)
-    df['bb_lower']= bb.bollinger_lband()
-    df['bb_upper']= bb.bollinger_hband()
-    df['bb_mid']  = bb.bollinger_mavg()
-    df['atr']     = ta.volatility.AverageTrueRange(h, l, c, 10).average_true_range()
-    df['adx']     = ta.trend.ADXIndicator(h, l, c, 14).adx()
-    df['vol_sma'] = ta.trend.SMAIndicator(v, 20).sma_indicator()
+    df['rsi']      = ta.momentum.RSIIndicator(c, 14).rsi()
+    bb             = ta.volatility.BollingerBands(c, 20, 2.0)
+    df['bb_lower'] = bb.bollinger_lband()
+    df['bb_upper'] = bb.bollinger_hband()
+    df['bb_mid']   = bb.bollinger_mavg()
+    df['atr']      = ta.volatility.AverageTrueRange(h, l, c, 10).average_true_range()
+    df['adx']      = ta.trend.ADXIndicator(h, l, c, 14).adx()
+    df['vol_sma']  = ta.trend.SMAIndicator(v, 20).sma_indicator()
     df['vol_ratio']= v / df['vol_sma']
+    df['ema50']    = ta.trend.EMAIndicator(c, 50).ema_indicator()
+    df['sma200']   = ta.trend.SMAIndicator(c, 200).sma_indicator()
 
     macd           = ta.trend.MACD(c)
     df['macd_h']   = macd.macd_diff()
@@ -142,7 +187,6 @@ def calculate_indicators(df):
 
     # Proper daily-reset VWAP
     df['vwap']     = calc_vwap(df)
-    df['sma200']   = ta.trend.SMAIndicator(c, 200).sma_indicator()
 
     return df
 
@@ -160,31 +204,50 @@ def _calc_rr(entry, stop, target, is_short=False):
     return f"1:{reward/risk:.1f}"
 
 def position_size_guide(entry, stop):
-    """Returns position sizing for 1% risk on a $10,000 account."""
+    """Position size for 1% risk on a $10,000 account."""
     risk_per_unit = abs(entry - stop)
     if risk_per_unit <= 0:
         return "N/A"
-    units = 100.0 / risk_per_unit   # $100 = 1% of $10k
-    return f"{units:.1f} units (risk $100 per $10k account)"
+    units = 100.0 / risk_per_unit
+    return f"{units:.1f} units (risk $100 per $10k)"
+
+def _is_us_equity(ticker):
+    """True if ticker is a US equity (not crypto, not international with dot)"""
+    return "." not in ticker and "-USD" not in ticker
 
 # ============================================================
-# V12 APEX ANALYSIS ENGINE
+# V13 APEX ENGINE — INSTITUTIONAL GRADE
 # ============================================================
 def analyze_asset(ticker, df_1d, df_1h, df_15m, spy_data=None):
     """
-    V12 Institutional Grade Multi-Factor Engine.
+    V13 Institutional Grade Engine.
 
-    Gate 1 — Earnings Safety: block if earnings within 72h
-    Gate 2 — Market Regime (ADX): ranging → mean reversion | trending → momentum
-    Gate 3 — Multi-Factor Signal (RSI + Z-Score + BB + VWAP)
-    Gate 4 — 15M Confirmation: 15M RSI must align with signal direction
-    Gate 5 — Daily 200 SMA macro filter
-    Gate 6 — NLP toxic news filter
+    GATES (all must pass for signal):
+    ─────────────────────────────────────────────────────────
+    LONG SNIPER (Mean Reversion):
+      1. ADX < 25 (ranging market — mean reversion valid)
+      2. RSI CROSS UP: was below 30 in last 3 bars, now 30–42 (bounce confirmed)
+      3. Price near EMA50 (within 3%) — mean is the target, must be close to it
+      4. Price below VWAP — below institutional fair value (backtest confirmed)
+      5. VIX < 25 for US equities (no mean reversion during market panic)
+      6. Daily 200 SMA: price not >10% below (no catching macro knives)
+      7. 15M RSI turning upward — timeframe confirmation
+      8. No toxic news / No earnings within 72h
 
-    Stop:   2 ATR | Target: 4 ATR (1:2 R:R — backtested optimal)
+    SHORT SNIPER (Mean Reversion):
+      1. ADX < 25 (ranging market)
+      2. RSI CROSS DOWN: was above 70 in last 3 bars, now 58–70 (rollover confirmed)
+      3. Price near EMA50 (within 3% above it)
+      4. Price above VWAP
+      5. 15M RSI turning downward
+      6. No toxic news / No earnings within 72h
+
+    LONG/SHORT MOMENTUM: unchanged from V12
+    ─────────────────────────────────────────────────────────
+    Stop: 2 ATR | Target: 4 ATR (1:2 R:R — backtested optimal)
     """
     df1h = calculate_indicators(df_1h.copy()).dropna()
-    if df1h.empty or len(df1h) < 5:
+    if df1h.empty or len(df1h) < 10:
         return None
 
     # Daily 200 SMA
@@ -195,6 +258,7 @@ def analyze_asset(ticker, df_1d, df_1h, df_15m, spy_data=None):
         daily_200_sma = d['sma200d'].iloc[-1]
 
     c         = df1h.iloc[-1]
+    rsi_series= df1h['rsi']
     rsi       = c['rsi']
     bb_lower  = c['bb_lower']
     bb_upper  = c['bb_upper']
@@ -206,6 +270,7 @@ def analyze_asset(ticker, df_1d, df_1h, df_15m, spy_data=None):
     macd_prev = c['macd_prev']
     zscore    = c['zscore']
     vwap      = c['vwap']
+    ema50     = c['ema50']
 
     rec        = "WAIT"
     signal     = "Scanning"
@@ -226,17 +291,34 @@ def analyze_asset(ticker, df_1d, df_1h, df_15m, spy_data=None):
     trending = adx >= 25
 
     # ── STRATEGY A: MEAN REVERSION LONG ─────────────────────────────────
-    if ranging and rsi < 30 and zscore < -1.5 and entry <= bb_lower:
+    # Core: RSI confirmed cross up + EMA50 proximity + below VWAP
+    rsi_cross_up  = rsi_crossed_up(rsi_series, lookback=3)
+    near_ema50    = entry <= ema50 * 1.03    # within 3% of EMA50
+    below_vwap    = entry < vwap
 
-        # Gate 4: 15M confirmation
-        if not confirm_on_15m(df_15m, "LONG"):
-            reason = "PENDING (15M): 1H oversold confirmed. Waiting for 15M RSI to turn up."
-        # Gate 5: Macro filter
+    if ranging and rsi_cross_up and near_ema50 and below_vwap:
+
+        # VIX Gate: block US mean-reversion LONGs during elevated fear
+        vix = get_vix()
+        if _is_us_equity(ticker) and vix and vix > VIX_BLOCK_THRESHOLD:
+            reason = f"FILTERED (VIX={vix:.1f}): Market fear elevated. Mean reversion unreliable."
+
+        # Macro Gate: no catching macro falling knives
         elif daily_200_sma and entry < (daily_200_sma * 0.90):
             reason = "FILTERED (MTF): Price >10% below Daily 200 SMA. Macro downtrend too strong."
-        # Gate 6: News
+
+        # 15M Confirmation
+        elif not confirm_on_15m(df_15m, "LONG"):
+            reason = "PENDING (15M): 1H bounce forming. Waiting for 15M RSI to confirm upward turn."
+
+        # Earnings filter
+        elif "-USD" not in ticker and has_earnings_soon(ticker, hours=72):
+            reason = "FILTERED (Earnings): Earnings within 72h. Fundamental risk too high."
+
+        # NLP filter
         elif check_toxic_news(ticker):
-            reason = "FILTERED (NLP): Toxic news detected. Blocking trade."
+            reason = "FILTERED (NLP): Toxic news keywords detected. Blocking trade."
+
         else:
             rec        = "LONG SNIPER"
             signal     = "Mean Reversion"
@@ -245,22 +327,32 @@ def analyze_asset(ticker, df_1d, df_1h, df_15m, spy_data=None):
             rr_str     = _calc_rr(entry, stop_loss, target_val)
             upside_str = f"+{((target_val - entry) / entry * 100):.2f}%"
             pos_size   = position_size_guide(entry, stop_loss)
-            confirmed  = 3  # RSI + ZScore + BB
-            if entry < vwap:       confirmed += 1
-            if vol_ratio > 1.3:    confirmed += 1
-            if daily_200_sma and entry > daily_200_sma: confirmed += 1
-            if df_15m is not None: confirmed += 1  # 15M confirmed
+
+            # Star rating — additional quality confirmations
+            confirmed = 4   # RSI cross + EMA50 + VWAP + ADX = 4 base
+            if zscore < -1.5:       confirmed += 1   # Statistically extreme
+            if entry <= bb_lower:   confirmed += 1   # At/below BB lower
+            if vol_ratio > 1.2:     confirmed += 1   # Elevated volume
+            if daily_200_sma and entry > daily_200_sma: confirmed += 1  # Macro uptrend
+            if df_15m is not None:  confirmed += 1   # 15M confirmed
             stars  = _star_rating(confirmed)
-            score  = confirmed * 14
-            reason = (f"V12 LONG: ADX={adx:.1f}(ranging), RSI={rsi:.1f}, "
-                      f"Z={zscore:.2f}, BB=touched, VWAP={'below' if entry<vwap else 'above'}, "
-                      f"15M=confirmed")
+            score  = confirmed * 12
+
+            vix_str = f", VIX={vix:.1f}" if vix else ""
+            reason = (f"V13 LONG: ADX={adx:.1f}(ranging), RSI crossed up "
+                      f"({rsi:.1f}), near EMA50, below VWAP, 15M=confirmed{vix_str}")
 
     # ── STRATEGY A: MEAN REVERSION SHORT ────────────────────────────────
-    elif ranging and rsi > 70 and zscore > 1.5 and entry >= bb_upper:
+    rsi_cross_dn  = rsi_crossed_down(rsi_series, lookback=3)
+    near_ema50_sh = entry >= ema50 * 0.97   # within 3% above EMA50
+    above_vwap    = entry > vwap
+
+    if ranging and rsi_cross_dn and near_ema50_sh and above_vwap and rec == "WAIT":
 
         if not confirm_on_15m(df_15m, "SHORT"):
-            reason = "PENDING (15M): 1H overbought confirmed. Waiting for 15M RSI to turn down."
+            reason = "PENDING (15M): 1H rollover forming. Waiting for 15M RSI to confirm downward turn."
+        elif "-USD" not in ticker and has_earnings_soon(ticker, hours=72):
+            reason = "FILTERED (Earnings): Earnings within 72h. Fundamental risk too high."
         elif check_toxic_news(ticker):
             reason = "FILTERED (NLP): Toxic news detected. Blocking trade."
         else:
@@ -271,23 +363,28 @@ def analyze_asset(ticker, df_1d, df_1h, df_15m, spy_data=None):
             rr_str     = _calc_rr(entry, stop_loss, target_val, is_short=True)
             upside_str = f"+{((entry - target_val) / entry * 100):.2f}%"
             pos_size   = position_size_guide(entry, stop_loss)
-            confirmed  = 3
-            if entry > vwap:       confirmed += 1
-            if vol_ratio > 1.3:    confirmed += 1
+
+            confirmed = 4
+            if zscore > 1.5:        confirmed += 1
+            if entry >= bb_upper:   confirmed += 1
+            if vol_ratio > 1.2:     confirmed += 1
             if daily_200_sma and entry < daily_200_sma: confirmed += 1
-            if df_15m is not None: confirmed += 1
+            if df_15m is not None:  confirmed += 1
             stars  = _star_rating(confirmed)
-            score  = confirmed * 14
-            reason = (f"V12 SHORT: ADX={adx:.1f}(ranging), RSI={rsi:.1f}, "
-                      f"Z={zscore:.2f}, BB=extended, 15M=confirmed")
+            score  = confirmed * 12
+
+            reason = (f"V13 SHORT: ADX={adx:.1f}(ranging), RSI crossed down "
+                      f"({rsi:.1f}), near EMA50, above VWAP, 15M=confirmed")
 
     # ── STRATEGY B: MOMENTUM BREAKOUT LONG ──────────────────────────────
-    elif trending and entry > bb_upper and vol_ratio > 1.5 and macd_h > 0 and macd_prev <= 0:
+    if trending and entry > bb_upper and vol_ratio > 1.5 and macd_h > 0 and macd_prev <= 0 and rec == "WAIT":
 
         if daily_200_sma and entry < daily_200_sma:
             reason = "FILTERED (MTF): Momentum breakout blocked — below Daily 200 SMA."
+        elif "-USD" not in ticker and has_earnings_soon(ticker, hours=72):
+            reason = "FILTERED (Earnings): Earnings within 72h."
         elif check_toxic_news(ticker):
-            reason = "FILTERED (NLP): Toxic news detected. Blocking trade."
+            reason = "FILTERED (NLP): Toxic news detected."
         else:
             rec        = "LONG MOMENTUM"
             signal     = "Trend Breakout"
@@ -301,15 +398,17 @@ def analyze_asset(ticker, df_1d, df_1h, df_15m, spy_data=None):
             if vol_ratio > 2.0: confirmed += 1
             if daily_200_sma and entry > daily_200_sma: confirmed += 1
             stars  = _star_rating(confirmed)
-            score  = confirmed * 14
-            reason = (f"V12 MOMENTUM: ADX={adx:.1f}(trending), "
-                      f"Vol={vol_ratio:.1f}x, MACD crossed +")
+            score  = confirmed * 12
+            reason = (f"V13 MOMENTUM: ADX={adx:.1f}(trending), "
+                      f"Vol={vol_ratio:.1f}x, MACD crossed +, BB breakout")
 
     # ── STRATEGY B: MOMENTUM BREAKDOWN SHORT ────────────────────────────
-    elif trending and entry < bb_lower and vol_ratio > 1.5 and macd_h < 0 and macd_prev >= 0:
+    if trending and entry < bb_lower and vol_ratio > 1.5 and macd_h < 0 and macd_prev >= 0 and rec == "WAIT":
 
-        if check_toxic_news(ticker):
-            reason = "FILTERED (NLP): Toxic news detected. Blocking trade."
+        if "-USD" not in ticker and has_earnings_soon(ticker, hours=72):
+            reason = "FILTERED (Earnings): Earnings within 72h."
+        elif check_toxic_news(ticker):
+            reason = "FILTERED (NLP): Toxic news detected."
         else:
             rec        = "SHORT MOMENTUM"
             signal     = "Trend Breakdown"
@@ -322,9 +421,9 @@ def analyze_asset(ticker, df_1d, df_1h, df_15m, spy_data=None):
             if entry < vwap:    confirmed += 1
             if vol_ratio > 2.0: confirmed += 1
             stars  = _star_rating(confirmed)
-            score  = confirmed * 14
-            reason = (f"V12 SHORT MOMENTUM: ADX={adx:.1f}(trending), "
-                      f"Vol={vol_ratio:.1f}x, MACD crossed -")
+            score  = confirmed * 12
+            reason = (f"V13 SHORT MOMENTUM: ADX={adx:.1f}(trending), "
+                      f"Vol={vol_ratio:.1f}x, MACD crossed -, BB breakdown")
 
     return {
         "ticker":         ticker,
