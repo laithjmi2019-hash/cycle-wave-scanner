@@ -5,7 +5,7 @@ import time
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import config
 
-from engines.crypto.strategies import momentum_continuation, liquidity_sweep_reversal, short_squeeze, mean_reversion, short_trend_continuation, long_squeeze
+from engines.crypto.strategies import momentum_continuation, liquidity_sweep_reversal, short_squeeze, mean_reversion, short_trend_continuation, long_squeeze, liquidation_sniper
 
 def analyze_crypto(ticker: str, df_1d, df_1h, df_15m, regime_data, derivatives_data, cvd_data, rs_data) -> dict:
     strategies = [
@@ -14,7 +14,8 @@ def analyze_crypto(ticker: str, df_1d, df_1h, df_15m, regime_data, derivatives_d
         short_squeeze.evaluate,
         mean_reversion.evaluate,
         short_trend_continuation.evaluate,
-        long_squeeze.evaluate
+        long_squeeze.evaluate,
+        liquidation_sniper.evaluate
     ]
     
     best_signal = None

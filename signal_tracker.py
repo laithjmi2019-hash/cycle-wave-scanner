@@ -86,8 +86,10 @@ def log_signal(signal_dict):
         "ticker":      signal_dict["ticker"],
         "rec":         rec,
         "asset_class": signal_dict.get("asset_class", "STOCKS"),
+        "direction":   "SHORT" if "SHORT" in rec else "LONG",
         "entry":       signal_dict["entry"],
         "stop":        signal_dict["stop_loss_raw"],
+        "initial_stop":signal_dict["stop_loss_raw"],
         "target":      signal_dict["target_raw"],
         "stars":       signal_dict.get("stars", "STAR_2"),
         "timestamp":   signal_dict["timestamp"],
@@ -128,12 +130,49 @@ def check_open_signals():
             still_open.append(sig)
             continue
 
+        # Dynamic Trailing Stop Logic (MFE Tracking)
+        highest = sig.get("highest", entry)
+        lowest  = sig.get("lowest", entry)
+        initial_stop = sig.get("initial_stop", stop)
+        
         if direction == "LONG":
+            highest = max(highest, price)
+            sig["highest"] = highest
+            risk_1r = entry - initial_stop
+            
+            # Move to Breakeven at 1R
+            if highest >= entry + risk_1r and stop < entry:
+                sig["stop"] = entry
+                stop = entry
+                
+            # Trail by 1.5R after 1.5R
+            if highest >= entry + (1.5 * risk_1r):
+                new_stop = highest - (1.5 * risk_1r)
+                if new_stop > stop:
+                    sig["stop"] = new_stop
+                    stop = new_stop
+                    
             if price <= stop:
                 outcome = "STOPPED OUT"
             elif price >= target:
                 outcome = "TARGET HIT"
         else:  # SHORT
+            lowest = min(lowest, price)
+            sig["lowest"] = lowest
+            risk_1r = initial_stop - entry
+            
+            # Move to Breakeven at 1R
+            if lowest <= entry - risk_1r and stop > entry:
+                sig["stop"] = entry
+                stop = entry
+                
+            # Trail by 1.5R after 1.5R
+            if lowest <= entry - (1.5 * risk_1r):
+                new_stop = lowest + (1.5 * risk_1r)
+                if new_stop < stop:
+                    sig["stop"] = new_stop
+                    stop = new_stop
+                    
             if price >= stop:
                 outcome = "STOPPED OUT"
             elif price <= target:

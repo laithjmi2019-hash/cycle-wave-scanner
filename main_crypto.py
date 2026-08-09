@@ -23,6 +23,7 @@ from engines.scoring.score_engine import should_alert
 from engines.risk.risk_engine import check_portfolio_risk, register_signal, calc_position_size
 from telegram.bot import send_signal, send_result
 from signal_tracker import log_signal, check_open_signals
+from execution.binance_broker import execute_trade
 
 def _load_cache() -> dict:
     try:
@@ -190,6 +191,14 @@ def run_crypto_scan():
                 register_signal(signal)
                 new_signals.append(ticker)
                 print(f"  ✓ Signal sent: {ticker} {qc} {direction} ({score}/100)")
+                
+                # Automated Execution
+                try:
+                    executed = execute_trade(signal)
+                    if executed:
+                        print(f"  💸 Trade executed natively on Binance Futures!")
+                except Exception as e:
+                    print(f"  ⚠️ Execution Exception: {e}")
         else:
             print(f"  ○ Logged only: {ticker} {qc} {direction} ({score}/100)")
 

@@ -1,0 +1,25 @@
+name: Weekly Walk-Forward Optimizer
+
+on:
+  schedule:
+    # Run at 00:00 every Sunday
+    - cron: '0 0 * * 0'
+  workflow_dispatch: # Allows manual trigger
+
+jobs:
+  optimize:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run Optimization Sweep
+        run: python research/optimizer.py

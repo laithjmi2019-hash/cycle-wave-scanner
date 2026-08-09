@@ -15,42 +15,64 @@ def simulate_trade(entry_price, stop_price, target_price, df_future, direction="
     mae = 0.0
     mfe = 0.0
     
+    highest = entry_price
+    lowest = entry_price
+    initial_stop = stop_price
+    current_stop = stop_price
+    
     for i, (idx, row) in enumerate(df_future.iterrows()):
         high, low = row['High'], row['Low']
         
         if direction == "LONG":
+            highest = max(highest, high)
             current_mae = (low - entry_price) / entry_price * 100
             current_mfe = (high - entry_price) / entry_price * 100
             mae = min(mae, current_mae)
             mfe = max(mfe, current_mfe)
             
-            # Intrabar collision check
-            stop_hit = low <= stop_price
+            risk_1r = entry_price - initial_stop
+            # Move to BE at 1R
+            if highest >= entry_price + risk_1r and current_stop < entry_price:
+                current_stop = entry_price
+            # Trail by 1.5R
+            if highest >= entry_price + (1.5 * risk_1r):
+                current_stop = max(current_stop, highest - (1.5 * risk_1r))
+            
+            stop_hit = low <= current_stop
             target_hit = high >= target_price
             
             if stop_hit and target_hit:
                 return "AMBIGUOUS", entry_price, i+1, 0.0, mae, mfe
             elif stop_hit:
-                pnl = (stop_price - entry_price) / entry_price * 100
-                return "STOPPED OUT", stop_price, i+1, pnl, mae, mfe
+                pnl = (current_stop - entry_price) / entry_price * 100
+                return "STOPPED OUT", current_stop, i+1, pnl, mae, mfe
             elif target_hit:
                 pnl = (target_price - entry_price) / entry_price * 100
                 return "TARGET HIT", target_price, i+1, pnl, mae, mfe
                 
         else: # SHORT
+            lowest = min(lowest, low)
             current_mae = (entry_price - high) / entry_price * 100
             current_mfe = (entry_price - low) / entry_price * 100
             mae = min(mae, current_mae)
             mfe = max(mfe, current_mfe)
             
-            stop_hit = high >= stop_price
+            risk_1r = initial_stop - entry_price
+            # Move to BE at 1R
+            if lowest <= entry_price - risk_1r and current_stop > entry_price:
+                current_stop = entry_price
+            # Trail by 1.5R
+            if lowest <= entry_price - (1.5 * risk_1r):
+                current_stop = min(current_stop, lowest + (1.5 * risk_1r))
+            
+            stop_hit = high >= current_stop
             target_hit = low <= target_price
             
             if stop_hit and target_hit:
                 return "AMBIGUOUS", entry_price, i+1, 0.0, mae, mfe
             elif stop_hit:
-                pnl = (entry_price - stop_price) / entry_price * 100
-                return "STOPPED OUT", stop_price, i+1, pnl, mae, mfe
+                pnl = (entry_price - current_stop) / entry_price * 100
+                return "STOPPED OUT", current_stop, i+1, pnl, mae, mfe
             elif target_hit:
                 pnl = (entry_price - target_price) / entry_price * 100
                 return "TARGET HIT", target_price, i+1, pnl, mae, mfe
