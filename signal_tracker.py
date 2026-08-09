@@ -73,7 +73,8 @@ def log_signal(signal_dict):
                       target_raw, stars, timestamp (ISO str)
     """
     data, sha = _fetch_log()
-    uid = f"{signal_dict['ticker']}_{signal_dict['recommendation']}_{signal_dict['timestamp'][:10]}"
+    rec = signal_dict.get("recommendation", signal_dict.get("rec", "UNKNOWN"))
+    uid = f"{signal_dict['ticker']}_{rec}_{signal_dict['timestamp'][:10]}"
 
     # Avoid duplicating same signal on same day
     existing_ids = [s.get("id") for s in data["open"]]
@@ -83,8 +84,8 @@ def log_signal(signal_dict):
     data["open"].append({
         "id":          uid,
         "ticker":      signal_dict["ticker"],
-        "direction":   "SHORT" if "SHORT" in signal_dict["recommendation"] else "LONG",
-        "rec":         signal_dict["recommendation"],
+        "rec":         rec,
+        "asset_class": signal_dict.get("asset_class", "STOCKS"),
         "entry":       signal_dict["entry"],
         "stop":        signal_dict["stop_loss_raw"],
         "target":      signal_dict["target_raw"],

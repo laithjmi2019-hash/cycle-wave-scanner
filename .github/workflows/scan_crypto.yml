@@ -1,0 +1,36 @@
+name: V14 Crypto Engine — 24/7 Scanner
+
+on:
+  schedule:
+    # Crypto runs 24/7 every 20 minutes
+    - cron: '*/20 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  scan-crypto:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run Crypto Scanner
+        env:
+          TELEGRAM_BOT_TOKEN:  ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID:    ${{ secrets.TELEGRAM_CHAT_ID }}
+          GITHUB_TOKEN:        ${{ secrets.GITHUB_TOKEN }}
+          B_PLUS_ALERTS:       "false"
+        run: |
+          python main_crypto.py
