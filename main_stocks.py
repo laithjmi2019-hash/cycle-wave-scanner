@@ -168,9 +168,9 @@ def run_stocks_scan():
                 _mark_sent(ticker, direction, cache)
                 register_signal(signal)
                 new_signals.append(ticker)
-                print(f"  ✓ Signal sent: {ticker} {qc} {direction} ({score}/100)")
+                print(f"  + Signal sent: {ticker} {qc} {direction} ({score}/100)")
         else:
-            print(f"  ○ Logged only: {ticker} {qc} {direction} ({score}/100)")
+            print(f"  - Logged only: {ticker} {qc} {direction} ({score}/100)")
 
     _save_cache(cache)
     print(f"\nScan complete. {len(new_signals)} signal(s) sent. "
