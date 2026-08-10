@@ -25,8 +25,7 @@ def analyze_crypto(ticker: str, df_1d, df_1h, df_15m, regime_data, derivatives_d
         try:
             res = strat(ticker, df_1d, df_1h, df_15m, regime_data, {}, derivatives_data, cvd_data, rs_data) if 'rs' in strat.__code__.co_varnames else strat(ticker, df_1d, df_1h, df_15m, regime_data, {}, derivatives_data, cvd_data)
             if res:
-                # simple scoring
-                score = 75
+                score = res.get('total_score_contribution', 70.0)
                 if score > best_score:
                     best_score = score
                     best_signal = res
@@ -51,10 +50,17 @@ def analyze_crypto(ticker: str, df_1d, df_1h, df_15m, regime_data, derivatives_d
             "total_score": best_score,
             "quality_class": quality,
             "breakdown": {},
-            "oi_summary": derivatives_data.get("summary", ""),
-            "funding_summary": derivatives_data.get("funding_current", ""),
-            "cvd_summary": cvd_data.get("cvd_direction", ""),
-            "reason_top3": ["Condition 1", "Condition 2", "Condition 3"],
+            "oi_summary": derivatives_data.get("summary", "") if derivatives_data else "N/A",
+            "funding_summary": derivatives_data.get("funding_current", "") if derivatives_data else "N/A",
+            "cvd_summary": cvd_data.get("cvd_direction", "") if cvd_data else "N/A",
+            "narrative": "Altcoin Season" if rs_data and rs_data.get('rs_score', 0) > 0 else "BTC Dominance",
+            "btc_regime": regime_data.get('regime_class', 'N/A'),
+            "rs_vs_btc": rs_data.get('trend', 'N/A') if rs_data else "N/A",
+            "reason_top3": [
+                f"Strategy: {best_signal.get('strategy', '')}",
+                f"Regime: {regime_data.get('regime_class', 'N/A')}",
+                f"RR: {best_signal.get('rr', 0):.2f}"
+            ],
             "timestamp": time.time()
         })
         
