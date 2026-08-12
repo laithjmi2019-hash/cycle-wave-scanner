@@ -27,34 +27,38 @@ def evaluate(ticker: str, df_1d: pd.DataFrame, df_1h: pd.DataFrame, df_15m: pd.D
         macd_ind = MACD(close=df_1h['Close'])
         macd_hist = macd_ind.macd_diff()
         
-        if adx >= 22 and adx > adx_prev:
-            if close > upper_bb and close > pdh:
-                if macd_hist.iloc[-1] > 0:
-                    atr_ind = AverageTrueRange(high=df_1d['High'], low=df_1d['Low'], close=df_1d['Close'], window=14)
-                    atr = atr_ind.average_true_range().iloc[-1]
-                    
-                    stop = pdh - 0.5 * atr if pdh < close else close - atr
-                    target = close + config.TARGET_ATR_MULT * atr
-                    
-                    risk = close - stop
-                    reward = target - close
-                    rr = reward / risk if risk > 0 else 0
-                    
-                    if rr >= config.MIN_RR_RATIO:
-                        from ta.momentum import RSIIndicator
-                        rsi = RSIIndicator(close=df_1h['Close'], window=14).rsi().iloc[-1]
-                        return {
-                            'direction': 'LONG',
-                            'entry': close,
-                            'stop': stop,
-                            'target': target,
-                            'rr': rr,
-                            'strategy': 'MOMENTUM_BREAKOUT',
-                            'factor_scores': {},
-                            'total_score_contribution': 20.0,
-                            'rsi': round(float(rsi), 1),
-                            'adx': round(float(adx), 1)
-                        }
+        from ta.trend import SMAIndicator
+        vol_sma20 = SMAIndicator(df_1h['Volume'], window=20).sma_indicator().iloc[-1]
+        curr_vol = df_1h['Volume'].iloc[-1]
+        
+        # Strict MACD Breakout Logic
+        if close > upper_bb and curr_vol > (vol_sma20 * 2.0):
+            if macd_hist.iloc[-1] > 0 and macd_hist.iloc[-2] < 0:
+                atr_ind = AverageTrueRange(high=df_1d['High'], low=df_1d['Low'], close=df_1d['Close'], window=14)
+                atr = atr_ind.average_true_range().iloc[-1]
+                
+                stop = close - (config.STOP_ATR_MULT * atr)
+                target = close + (config.TARGET_ATR_MULT * atr)
+                
+                risk = close - stop
+                reward = target - close
+                rr = reward / risk if risk > 0 else 0
+                
+                if rr >= config.MIN_RR_RATIO:
+                    from ta.momentum import RSIIndicator
+                    rsi = RSIIndicator(close=df_1h['Close'], window=14).rsi().iloc[-1]
+                    return {
+                        'direction': 'LONG',
+                        'entry': close,
+                        'stop': stop,
+                        'target': target,
+                        'rr': rr,
+                        'strategy': 'MOMENTUM_BREAKOUT',
+                        'factor_scores': {},
+                        'total_score_contribution': 20.0,
+                        'rsi': round(float(rsi), 1),
+                        'adx': round(float(adx), 1)
+                    }
     except Exception:
         pass
         

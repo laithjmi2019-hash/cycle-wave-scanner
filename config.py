@@ -44,7 +44,7 @@ EARNINGS_BLOCK_HOURS = int(os.environ.get("EARNINGS_BLOCK_HOURS", 72))
 # ATR STOP / TARGET — baseline from V13 backtesting
 # ═══════════════════════════════════════════════════════════════════════
 STOP_ATR_MULT   = 2.0
-TARGET_ATR_MULT = 4.0
+TARGET_ATR_MULT = 2.0
 
 # ═══════════════════════════════════════════════════════════════════════
 # POSITION SIZING
