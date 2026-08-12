@@ -63,7 +63,7 @@ def process_ticker(args) -> dict | None:
     data = fetch_stock(ticker)
     if not data["ok"]:
         if data["issues"]:
-            print(f"  {ticker}: DATA FAIL — {data['issues'][0]}")
+            print(f"  {ticker}: DATA FAIL - {data['issues'][0]}")
         return None
 
     # Run stocks engine
@@ -77,7 +77,7 @@ def process_ticker(args) -> dict | None:
             regime_data = regime_data,
         )
     except Exception as e:
-        print(f"  {ticker}: Engine error — {e}")
+        print(f"  {ticker}: Engine error - {e}")
         return None
 
     return signal
@@ -86,7 +86,7 @@ def process_ticker(args) -> dict | None:
 def run_stocks_scan():
     ts = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     print(f"\n{'='*60}")
-    print(f"STOCKS ENGINE SCAN — {ts}")
+    print(f"STOCKS ENGINE SCAN - {ts}")
     print(f"{'='*60}")
 
     # Step 1: Check open signal outcomes
@@ -136,7 +136,7 @@ def run_stocks_scan():
 
         # Check hard veto
         if signal.get("hard_veto"):
-            print(f"  {ticker}: VETO — {signal['hard_veto']}")
+            print(f"  {ticker}: VETO - {signal['hard_veto']}")
             continue
 
         # Deduplication
@@ -147,7 +147,7 @@ def run_stocks_scan():
         sector   = signal.get("sector", "")
         risk_chk = check_portfolio_risk(ticker, sector, qc)
         if not risk_chk["allowed"]:
-            print(f"  {ticker}: Risk limit — {risk_chk['reason']}")
+            print(f"  {ticker}: Risk limit - {risk_chk['reason']}")
             continue
 
         # Quality gate — enrich signal with position size

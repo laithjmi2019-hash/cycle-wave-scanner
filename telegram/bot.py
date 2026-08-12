@@ -23,7 +23,7 @@ ASSET_PREFIX = {
 def _post(text: str):
     """Send raw text to Telegram."""
     if not config.TELEGRAM_TOKEN or not config.TELEGRAM_CHAT_ID:
-        print("  [Telegram] Missing credentials — message not sent.")
+        print("  [Telegram] Missing credentials - message not sent.")
         return False
     url     = f"https://api.telegram.org/bot{config.TELEGRAM_TOKEN}/sendMessage"
     payload = {"chat_id": config.TELEGRAM_CHAT_ID, "text": text, "parse_mode": "HTML"}
@@ -178,7 +178,7 @@ def send_signal(signal: dict) -> bool:
 
     # Check if it meets alert threshold
     if not config.B_PLUS_ALERTS_ENABLED and quality_class not in ("A+", "A"):
-        print(f"  [Bot] {signal.get('ticker')} {quality_class} ({score}/100) — below alert threshold, logged only.")
+        print(f"  [Bot] {signal.get('ticker')} {quality_class} ({score}/100) - below alert threshold, logged only.")
         return False
     if quality_class == "C":
         return False
