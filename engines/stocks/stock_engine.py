@@ -93,17 +93,28 @@ def analyze_stock(ticker: str, df_1d: pd.DataFrame, df_1h: pd.DataFrame, df_15m:
             'target': best_sig['target'],
             'rr': best_sig['rr'],
             'pos_size': pos_size,
-            'total_score': total_score,
+            'total_score': round(total_score, 1),
             'quality_class': quality_class,
+            'rsi': best_sig.get('rsi', 'N/A'),
+            'adx': best_sig.get('adx', 'N/A'),
+            'rvol': round(rvol_val, 1) if rvol_val else 'N/A',
+            'structure': struct_data.get('trend', 'N/A'),
+            'rs_vs_spy': 'N/A',
+            'regime_class': regime_data.get('regime_class', ''),
+            'sector': config.TICKER_SECTOR.get(ticker, ''),
             'breakdown': {
-                'regime': reg_score,
-                'rs': rs_score,
-                'rvol': rv_score,
-                'structure': st_score,
-                'liquidity': lq_score,
-                'catalyst': cat_score
+                'Regime':    {'score': round(reg_score, 1), 'max': config.STOCK_SCORE_WEIGHTS['market_regime']},
+                'Rel Str':   {'score': round(rs_score, 1),  'max': config.STOCK_SCORE_WEIGHTS['relative_strength']},
+                'RVOL':      {'score': round(rv_score, 1),  'max': config.STOCK_SCORE_WEIGHTS['participation']},
+                'Structure': {'score': round(st_score, 1),  'max': config.STOCK_SCORE_WEIGHTS['price_structure']},
+                'Liquidity': {'score': round(lq_score, 1),  'max': config.STOCK_SCORE_WEIGHTS['liquidity']},
+                'Catalyst':  {'score': round(cat_score, 1), 'max': config.STOCK_SCORE_WEIGHTS['catalyst']},
             },
-            'reason_top3': [f"Strategy: {best_sig['strategy']}", f"Regime: {regime_data.get('regime_class')}", f"RR: {best_sig['rr']:.2f}"],
+            'reason_top3': [
+                f"Strategy: {best_sig['strategy']}",
+                f"Regime: {regime_data.get('regime_class')}",
+                f"RR: {best_sig['rr']:.2f}"
+            ],
             'hard_veto': hard_veto,
             'timestamp': datetime.now(timezone.utc).isoformat()
         }

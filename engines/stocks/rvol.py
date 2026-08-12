@@ -18,7 +18,8 @@ def calc_rvol(df_1h: pd.DataFrame) -> float:
         hour = current_idx.hour
         minute = current_idx.minute
         
-        recent_df = df_1h.iloc[:-1].last('14D')
+        cutoff = pd.Timestamp.now(tz=df_1h.index.tz) - pd.Timedelta(days=14)
+        recent_df = df_1h.iloc[:-1].loc[df_1h.iloc[:-1].index >= cutoff]
         if recent_df.empty: return 1.0
         
         same_time = recent_df[(recent_df.index.hour == hour) & (recent_df.index.minute == minute)]
