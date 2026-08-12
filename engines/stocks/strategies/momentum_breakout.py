@@ -41,6 +41,8 @@ def evaluate(ticker: str, df_1d: pd.DataFrame, df_1h: pd.DataFrame, df_15m: pd.D
                     rr = reward / risk if risk > 0 else 0
                     
                     if rr >= config.MIN_RR_RATIO:
+                        from ta.momentum import RSIIndicator
+                        rsi = RSIIndicator(close=df_1h['Close'], window=14).rsi().iloc[-1]
                         return {
                             'direction': 'LONG',
                             'entry': close,
@@ -49,7 +51,9 @@ def evaluate(ticker: str, df_1d: pd.DataFrame, df_1h: pd.DataFrame, df_15m: pd.D
                             'rr': rr,
                             'strategy': 'MOMENTUM_BREAKOUT',
                             'factor_scores': {},
-                            'total_score_contribution': 20.0
+                            'total_score_contribution': 20.0,
+                            'rsi': round(float(rsi), 1),
+                            'adx': round(float(adx), 1)
                         }
     except Exception:
         pass

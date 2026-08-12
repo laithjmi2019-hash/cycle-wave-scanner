@@ -129,10 +129,10 @@ CRYPTO_SCORE_WEIGHTS = {
 # SECTOR ETF MAP — for relative strength calculation
 # ═══════════════════════════════════════════════════════════════════════
 SECTOR_ETF_MAP = {
-    "XLK": ["AAPL","MSFT","NVDA","AMD","INTC","AVGO","QCOM","CRM","ORCL","AMAT"],
-    "XLF": ["JPM","BAC","WFC","GS","MS","BLK","SCHW","AXP","USB","PNC"],
+    "XLK": ["AAPL","MSFT","NVDA","AMD","INTC","AVGO","QCOM","CRM","ORCL","AMAT","CSCO","ACN"],
+    "XLF": ["JPM","BAC","WFC","GS","MS","BLK","SCHW","AXP","USB","PNC","C","ICE"],
     "XLE": ["XOM","CVX","COP","EOG","SLB","PSX","VLO","MPC","OXY","HAL"],
-    "XLV": ["UNH","JNJ","LLY","ABBV","MRK","TMO","ABT","DHR","BMY","AMGN"],
+    "XLV": ["UNH","JNJ","LLY","ABBV","MRK","TMO","ABT","DHR","BMY","AMGN","BSX","ELV","CI","HUM"],
     "XLY": ["AMZN","TSLA","HD","MCD","NKE","LOW","SBUX","CMG","BKNG","TJX"],
     "XLC": ["META","GOOGL","NFLX","DIS","CMCSA","T","VZ","EA","TTWO","WBD"],
     "XLI": ["GE","RTX","BA","HON","CAT","DE","UPS","LMT","NOC","FDX"],

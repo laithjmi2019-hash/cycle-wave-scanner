@@ -18,6 +18,25 @@ from engines.stocks.strategies.momentum_breakout import evaluate as eval_mb
 from engines.stocks.strategies.pullback_continuation import evaluate as eval_pc
 from engines.stocks.strategies.short_breakdown import evaluate as eval_short_bd
 from engines.stocks.strategies.short_mean_reversion import evaluate as eval_short_mr
+from engines.stocks.relative_strength import calc_relative_strength, calc_rs_score, rs_trend
+import yfinance as yf
+
+# Global cache for SPY 1h data so we don't fetch it 80 times
+_SPY_1H_CACHE = None
+_SPY_CACHE_TIME = None
+
+def get_spy_1h() -> pd.DataFrame:
+    global _SPY_1H_CACHE, _SPY_CACHE_TIME
+    now = datetime.now(timezone.utc)
+    if _SPY_1H_CACHE is not None and _SPY_CACHE_TIME and (now - _SPY_CACHE_TIME).total_seconds() < 3600:
+        return _SPY_1H_CACHE
+    try:
+        spy = yf.download("SPY", period="10d", interval="1h", progress=False)
+        _SPY_1H_CACHE = spy
+        _SPY_CACHE_TIME = now
+        return spy
+    except Exception:
+        return None
 
 def analyze_stock(ticker: str, df_1d: pd.DataFrame, df_1h: pd.DataFrame, df_15m: pd.DataFrame, regime_data: dict) -> dict:
     try:
@@ -47,7 +66,10 @@ def analyze_stock(ticker: str, df_1d: pd.DataFrame, df_1h: pd.DataFrame, df_15m:
             
         best_sig = sorted(valid_sigs, key=lambda x: x.get('total_score_contribution', 0), reverse=True)[0]
         
-        rs_score = calc_rs_score({5: 1.05})
+        spy_1h = get_spy_1h()
+        rs_values = calc_relative_strength(df_1h, spy_1h)
+        rs_score = calc_rs_score(rs_values)
+        rs_trend_str = rs_trend(rs_values)
         
         rvol_val = calc_rvol(df_1h)
         rv_score = rvol_score(rvol_val)
@@ -99,7 +121,7 @@ def analyze_stock(ticker: str, df_1d: pd.DataFrame, df_1h: pd.DataFrame, df_15m:
             'adx': best_sig.get('adx', 'N/A'),
             'rvol': round(rvol_val, 1) if rvol_val else 'N/A',
             'structure': struct_data.get('trend', 'N/A'),
-            'rs_vs_spy': 'N/A',
+            'rs_vs_spy': rs_trend_str,
             'regime_class': regime_data.get('regime_class', ''),
             'sector': config.TICKER_SECTOR.get(ticker, ''),
             'breakdown': {

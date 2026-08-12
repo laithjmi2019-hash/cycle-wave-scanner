@@ -47,7 +47,7 @@ def evaluate(ticker: str, df_1d: pd.DataFrame, df_1h: pd.DataFrame, df_15m: pd.D
         if adx < 28:
             score_contrib += 5.0
             
-        if score_contrib > 0:
+        if score_contrib >= 15.0:  # Require actual RSI contribution
             from ta.volatility import AverageTrueRange
             atr_ind = AverageTrueRange(high=df_1d['High'], low=df_1d['Low'], close=df_1d['Close'], window=14)
             atr = atr_ind.average_true_range().iloc[-1]
@@ -68,7 +68,9 @@ def evaluate(ticker: str, df_1d: pd.DataFrame, df_1h: pd.DataFrame, df_15m: pd.D
                     'rr': rr,
                     'strategy': 'MEAN_REVERSION',
                     'factor_scores': {'rsi': score_contrib},
-                    'total_score_contribution': score_contrib
+                    'total_score_contribution': score_contrib,
+                    'rsi': round(float(rsi.iloc[-1]), 1),
+                    'adx': round(float(adx), 1)
                 }
     except Exception:
         pass
