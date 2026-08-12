@@ -60,11 +60,11 @@ QUALITY_RISK_MULT = {
 }
 
 # ═══════════════════════════════════════════════════════════════════════
-# PORTFOLIO RISK CONTROLS
+# PORTFOLIO RISK CONTROLS (DISABLED AS PER USER REQUEST)
 # ═══════════════════════════════════════════════════════════════════════
-MAX_PORTFOLIO_RISK_PCT    = 5.0   # Max % of account open risk at any time
-MAX_SECTOR_RISK_PCT       = 2.0   # Max % of account in one sector
-MAX_CORRELATED_POSITIONS  = 2     # Max simultaneous positions in same correlation cluster
+MAX_PORTFOLIO_RISK_PCT    = 999.0 # Effectively unlimited
+MAX_SECTOR_RISK_PCT       = 999.0 # Effectively unlimited
+MAX_CORRELATED_POSITIONS  = 999   # Effectively unlimited
 
 # ═══════════════════════════════════════════════════════════════════════
 # SIGNAL DEDUPLICATION
