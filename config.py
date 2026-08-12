@@ -21,9 +21,9 @@ SCORE_THRESHOLDS = {
     "B":  40,   # Watchlist — never alert
     "C":   0,   # No trade — never alert
 }
-# Production default: only A and A+ go to Telegram
-B_PLUS_ALERTS_ENABLED = os.environ.get("B_PLUS_ALERTS", "true").lower() == "true"
-MIN_ALERT_SCORE = SCORE_THRESHOLDS["A"]   # 68
+# Production: send all grades B and above to Telegram (user preference: no limits)
+B_PLUS_ALERTS_ENABLED = True  # Always on — user manages risk manually
+MIN_ALERT_SCORE = SCORE_THRESHOLDS["B"]   # 40 — send everything B and above
 
 # ═══════════════════════════════════════════════════════════════════════
 # HARD VETO THRESHOLDS

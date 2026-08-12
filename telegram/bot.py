@@ -176,12 +176,9 @@ def send_signal(signal: dict) -> bool:
     quality_class = signal.get("quality_class", "C")
     asset_class   = signal.get("asset_class", "STOCKS")
 
-    # Check if it meets alert threshold
-    if not config.B_PLUS_ALERTS_ENABLED and quality_class not in ("A+", "A"):
-        print(f"  [Bot] {signal.get('ticker')} {quality_class} ({score}/100) - below alert threshold, logged only.")
-        return False
+    # Check if it meets alert threshold - send B grade and above (user manages risk)
     if quality_class == "C":
-        return False
+        return False  # Only C grade is suppressed
 
     msg = (build_crypto_message(signal)
            if asset_class == "CRYPTO"

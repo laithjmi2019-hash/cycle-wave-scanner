@@ -113,9 +113,5 @@ def extract_top_reasons(breakdown: dict, n: int = 4) -> list[str]:
     return [r[1] for r in reasons[:n]]
 
 def should_alert(score: float) -> bool:
-    """Determine if signal should be sent to Telegram."""
-    if score >= config.SCORE_THRESHOLDS["A"]:    # A or A+
-        return True
-    if score >= config.SCORE_THRESHOLDS["B+"] and config.B_PLUS_ALERTS_ENABLED:
-        return True
-    return False
+    """Send B grade and above to Telegram. User manages risk manually."""
+    return score >= config.SCORE_THRESHOLDS["B"]   # 40+
